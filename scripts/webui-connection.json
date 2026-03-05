@@ -1,0 +1,1 @@
+[{"type":"mcp","url":"http://mcp-server:8001/mcp","spec_type":"url","spec":"","path":"openapi.json","auth_type":"none","key":"","info":{"id":"paperless-mcp-server","name":"paperless-mcp-server","description":"Searchless-ngx: Agentic RAG MCP Server for Paperless-ngx"}}]

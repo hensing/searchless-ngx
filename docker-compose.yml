@@ -1,0 +1,63 @@
+services:
+  chromadb:
+    image: chromadb/chroma:1.5.2
+    container_name: paperless-chromadb
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      ANONYMIZED_TELEMETRY: "False"
+    healthcheck:
+      test: ["CMD", "perl", "-MIO::Socket", "-e", "$$s=IO::Socket::INET->new('localhost:8000'); exit($$s ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: paperless-mcp-server
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: paperless-webui
+    ports:
+      - "8080:8080"
+    volumes:
+      - open-webui:/app/backend/data
+    environment:
+      # Google Gemini API Key for the UI
+      - GOOGLE_API_KEY=${GEMINI_API_KEY}
+      # Optional: Local Ollama Configuration
+      # To use a local Ollama instance, uncomment the line below.
+      # On macOS/Windows with Docker Desktop, use 'host.docker.internal'.
+      # - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  chroma_data:
+  open-webui:

@@ -1,0 +1,31 @@
+# Paperless MCP Agent: Development Rules
+
+## Core Principles
+- **Strict English**: Write all code, comments, and documentation in English.
+- **Read-Only**: Zero destructive actions on the Paperless API. No tag assignments, no document deletions. Use `content` and `notes` fields only.
+- **Rootless Docker**: Ensure all scripts and configurations support rootless Docker execution.
+- **Dependency Management**: Use `uv` for all Python dependencies.
+
+## MCP Protocol & JSON Schema (Open WebUI Compatibility)
+Open WebUI's experimental MCP parser is extremely strict. To prevent crashes:
+- **No Union Types**: Never use `Optional[T]` or `anyOf` in tool parameters.
+- **Primitive Defaults**: Every tool parameter must have a strict base type (`str`, `int`) and a primitive default value (`""`, `0`).
+- **No Empty Properties**: Ensure every tool has at least one required property to avoid empty `"properties": {}` schemas.
+- **Pydantic Fields**: Use `pydantic.Field` for all tool parameters to provide clear descriptions for the LLM.
+- **Streamable HTTP**: The server uses FastMCP's Streamable HTTP on `/mcp`.
+
+## Metadata & Search
+- **Hierarchy Awareness**: Use `metadata_cache.get_tag_path` to resolve and display full hierarchical tag paths (e.g., `Finance/Tax`).
+- **Paginated Cache**: Ensure the `MetadataCache` fetches all pages of correspondents and tags to support large libraries.
+- **Hybrid Search**: Maintain the balance between exact metadata API search and ChromaDB vector search.
+- **Structural OCR**: When generating search snippets, preserve meaningful line breaks while collapsing excessive whitespace. Use Markdown blockquotes (`>`) for snippets.
+
+## Enterprise Standards
+- **Logging**: Use `loguru` for structured, color-coded logging.
+- **Resilience**: Use `tenacity` for API request retries.
+- **Error Handling**: Wrap tool execution in try-except blocks that return helpful error messages to the LLM instead of crashing the server.
+
+## Testing
+- Maintain high test coverage for API interaction (`tests/test_paperless_client.py`) and vector operations (`tests/test_vector_store.py`).
+- Add unit tests for all new metadata resolution logic (`tests/test_metadata_cache.py`).
+- Verify tool output formatting and logic in `tests/test_mcp_tools.py`.
