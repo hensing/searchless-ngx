@@ -23,7 +23,7 @@ For the fastest and most reliable setup, use the JSON import feature.
 4.  **Enable Tools**:
     *   Find the **Tools** section.
     *   Enable all tools starting with `paperless-mcp-server_` (e.g., `search_paperless_metadata`).
-5.  **Citations (Optional)**: Enable citations in the model settings to see the interactive document "cards".
+5.  **Citations**: Ensure citations are **enabled** in the model settings to correctly render the interactive document "cards".
 
 ## Section 3: The Optimized System Prompt
 
@@ -41,7 +41,8 @@ You have access to:
 RULES:
 1. NO HALLUCINATIONS. If tools return nothing, say you found nothing.
 2. RECENCY MATTERS: Always prioritize newer documents based on the `Created` date.
-3. ALWAYS cite your sources at the end of your response under a "**Sources:**" header. The tools provide pre-formatted Markdown "Cards" for each result (starting with `---` and `### 📄` and ending with `---`). You MUST include these cards EXACTLY as they are returned by the tool. Do not reformat, shorten, or summarize them.
+3. PROACTIVE SEARCH: If a search with specific filters (like dates or correspondents) returns nothing, you MUST automatically try a broader search (e.g., remove the date range) and inform the user.
+4. ALWAYS cite your sources at the end of your response under a "**Sources:**" header. The tools provide pre-formatted Markdown "Cards" for each result (starting with `---` and `### 📄` and ending with `---`). You MUST include these cards EXACTLY as they are returned by the tool. Do not reformat, shorten, or summarize them.
 ```
 
 ## Section 4: Advanced Formatting Tips

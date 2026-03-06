@@ -38,6 +38,9 @@ mcp = FastMCP(
 # We will initialize the client when tools are called, or via dependency injection if preferred
 client = PaperlessAPIClient()
 
+def _get_today_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
 @mcp.tool()
 async def search_paperless_metadata(
     query: str = Field(default="", description="The search keyword. Leave empty to list the most recent documents."),
@@ -48,8 +51,9 @@ async def search_paperless_metadata(
     created_after: str = Field(default="", description="Date YYYY-MM-DD"),
     created_before: str = Field(default="", description="Date YYYY-MM-DD")
 ) -> str:
-    """
+    f"""
     Perform an exact keyword and metadata search in Paperless-ngx. Results are sorted NEWEST FIRST.
+    CURRENT DATE: {_get_today_str()}
 
     IMPORTANT RULES:
     - USE THIS TOOL PRIMARILY when you know the EXACT Correspondent, Tag, or Document Type.
@@ -59,21 +63,34 @@ async def search_paperless_metadata(
     - Date parameters must be YYYY-MM-DD.
     - If the user asks for a specific correspondent or document type, call `get_paperless_master_data` FIRST to find integer IDs.
     - Do NOT pass string names to `correspondent`, `tags`, or `document_type`, only integer IDs.
+
+    FALLBACK STRATEGY:
+    - If this tool returns 'No documents found', you MUST RETRY with broader filters.
+    - For example, if you searched with a specific date range, REMOVE the date range and try again.
+    - If you find results in a different timeframe, inform the user: 'I found nothing for [Period], but I found these documents in [Other Period]...'
+    - CRITICAL: If a search returns nothing, you MUST explicitly tell the user and explain which filters you applied. Never stay silent.
     """
     params = {"ordering": "-created", "page_size": min(page_size, 50)}
 
+    applied_filters = []
     if query:
         params["query"] = query
+        applied_filters.append(f"query='{query}'")
     if tags:
         params["tags__id__in"] = tags
+        applied_filters.append(f"tags={tags}")
     if correspondent and correspondent > 0:
         params["correspondent__id"] = correspondent
+        applied_filters.append(f"correspondent_id={correspondent}")
     if document_type and document_type > 0:
         params["document_type__id"] = document_type
+        applied_filters.append(f"document_type_id={document_type}")
     if created_after:
         params["created__date__gte"] = created_after
+        applied_filters.append(f"created_after='{created_after}'")
     if created_before:
         params["created__date__lte"] = created_before
+        applied_filters.append(f"created_before='{created_before}'")
 
     try:
         await metadata_cache.refresh_if_needed(client)
@@ -81,7 +98,12 @@ async def search_paperless_metadata(
         results = response.get("results", [])
 
         if not results:
-            return "No documents found via metadata search."
+            filters_str = ", ".join(applied_filters) if applied_filters else "None"
+            return (
+                f"No documents found via metadata search using filters: {filters_str}. "
+                "RETRY with broader criteria (e.g., remove date filters or broaden the query). "
+                "If you still find nothing, you MUST report this result to the user."
+            )
 
         output = [f"Found {len(results)} exact matches via Paperless API:"]
         base_url = settings.public_url.rstrip('/')
@@ -171,39 +193,53 @@ async def semantic_search_with_filters(
     added_after: str = Field(default="", description="Added to paperless after date (YYYY-MM-DD)"),
     added_before: str = Field(default="", description="Added to paperless before date (YYYY-MM-DD)")
 ) -> str:
-    """
+    f"""
     Perform a highly powerful semantic/vector search over document contents.
+    CURRENT DATE: {_get_today_str()}
+
     - USE THIS TOOL INSTEAD OF metadata search when the user asks conceptual questions (e.g., "What are my cancellation terms?", "receipts for food", "software subscriptions") OR when you don't have an exact correspondent/tag match.
     - This search finds meaning, not just exact keywords.
     - If the snippets returned do not contain the specific answer (e.g., a specific price or clause), use `get_document_details` on the most relevant Document IDs to read the full text.
     - You can combine the semantic `query` with strict date boundaries.
     - If the user asks for a timeframe (e.g., "in 2023"), you MUST use `created_after="2023-01-01"` and `created_before="2023-12-31"`.
     - Date formats MUST be ISO format (YYYY-MM-DD).
+
+    FALLBACK STRATEGY:
+    - If this tool returns 'No relevant semantic chunks found', you MUST RETRY with broader filters.
+    - For example, if you searched with a specific date range, REMOVE the date range and try again.
+    - If you find results in a different timeframe, inform the user: 'I found nothing for [Period], but I found these documents in [Other Period]...'
+    - CRITICAL: If a search returns nothing, you MUST explicitly tell the user and explain which filters you applied. Never stay silent.
     """
     try:
         where_filter = {}
         conditions = []
+        applied_filters = [f"query='{query}'"]
 
         if document_id and document_id > 0:
             conditions.append({"document_id": document_id})
+            applied_filters.append(f"document_id={document_id}")
 
         if created_after and isinstance(created_after, str) and not hasattr(created_after, "default"):
             ts = _date_to_timestamp(created_after)
             if ts:
                 conditions.append({"created": {"$gte": ts}})
+                applied_filters.append(f"created_after='{created_after}'")
         if created_before and isinstance(created_before, str) and not hasattr(created_before, "default"):
             ts = _date_to_timestamp(created_before)
             if ts:
                 conditions.append({"created": {"$lte": ts}})
+                applied_filters.append(f"created_before='{created_before}'")
 
         if added_after and isinstance(added_after, str) and not hasattr(added_after, "default"):
             ts = _date_to_timestamp(added_after)
             if ts:
                 conditions.append({"added": {"$gte": ts}})
+                applied_filters.append(f"added_after='{added_after}'")
         if added_before and isinstance(added_before, str) and not hasattr(added_before, "default"):
             ts = _date_to_timestamp(added_before)
             if ts:
                 conditions.append({"added": {"$lte": ts}})
+                applied_filters.append(f"added_before='{added_before}'")
 
         if len(conditions) == 1:
             where_filter = conditions[0]
@@ -227,7 +263,12 @@ async def semantic_search_with_filters(
         distances = dists_list[0] if dists_list else []
 
         if not docs:
-            return "No relevant semantic chunks found matching your criteria."
+            filters_str = ", ".join(applied_filters)
+            return (
+                f"No relevant semantic chunks found matching your criteria (Filters: {filters_str}). "
+                "RETRY with broader criteria (e.g., remove date filters or broaden the query). "
+                "If you still find nothing, you MUST report this result to the user."
+            )
 
         output = ["Semantic Search Results:"]
         base_url = settings.public_url.rstrip('/')
@@ -333,31 +374,53 @@ async def get_document_details(
 
 @mcp.tool()
 async def get_paperless_master_data(
-    mode: str = Field(..., description="Always pass the string 'all' to this parameter.")
+    mode: str = Field(default="all", description="Legacy parameter. The tool now always returns filtered results or a summary."),
+    filter: str = Field(default="", description="Search for a specific correspondent or tag by name (e.g., 'Amazon' or 'Mobility')")
 ) -> str:
     """
-    Fetch the master list mapping of all Correspondents, Tags, and Document Types to their integer IDs.
-    CRITICAL: Call this FIRST if the user asks for a specific sender, category, or document type (like 'Invoice' or 'Contract') to get the correct integer IDs.
+    Fetch the master list mapping of Correspondents, Tags, and Document Types to their integer IDs.
+    CRITICAL: Call this FIRST if the user asks for a specific sender, category, or document type to get the correct integer IDs.
+    - If you provide a 'filter', only matching items will be returned.
+    - You MUST NOT guess IDs or pass string names to other tools. Always use this tool for ID lookup first.
     """
     try:
         await metadata_cache.refresh_if_needed(client)
 
-        output = ["=== Correspondents ==="]
-        # Sort by name for better readability
+        output = []
+        filter_lower = filter.lower() if filter else ""
+
+        # Correspondents
+        output.append("=== Correspondents ===")
         sorted_corrs = sorted(metadata_cache.correspondents.items(), key=lambda x: x[1].lower())
+        found_corr = False
         for c_id, c_name in sorted_corrs:
-            output.append(f"ID: {c_id} | Name: {c_name}")
+            if not filter_lower or filter_lower in c_name.lower():
+                output.append(f"ID: {c_id} | Name: {c_name}")
+                found_corr = True
+        if not found_corr:
+            output.append("No matching correspondents found.")
 
+        # Tags
         output.append("\n=== Tags ===")
-        # Use tag paths for clarity and sort by path
         sorted_tags = sorted(metadata_cache.tags.items(), key=lambda x: x[1]["path"].lower())
+        found_tag = False
         for t_id, t_info in sorted_tags:
-            output.append(f"ID: {t_id} | Name: {t_info['path']}")
+            if not filter_lower or filter_lower in t_info['path'].lower():
+                output.append(f"ID: {t_id} | Name: {t_info['path']}")
+                found_tag = True
+        if not found_tag:
+            output.append("No matching tags found.")
 
+        # Document Types
         output.append("\n=== Document Types ===")
         sorted_dtypes = sorted(metadata_cache.document_types.items(), key=lambda x: x[1].lower())
+        found_dtype = False
         for dt_id, dt_name in sorted_dtypes:
-            output.append(f"ID: {dt_id} | Name: {dt_name}")
+            if not filter_lower or filter_lower in dt_name.lower():
+                output.append(f"ID: {dt_id} | Name: {dt_name}")
+                found_dtype = True
+        if not found_dtype:
+            output.append("No matching document types found.")
 
         return "\n".join(output)
     except Exception as e:

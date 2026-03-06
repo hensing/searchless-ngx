@@ -1,3 +1,29 @@
+# Release Notes - v0.1.5 🧭
+
+This release introduces **Search Resilience & Smart Fallback Strategies**, making the agent much more proactive when initial search results are empty.
+
+## Key Improvements in v0.1.5
+
+### 🧭 Smart Search Fallbacks
+The search tools now include explicit "Retry Logic" for the LLM. If a narrow search (e.g., within a specific date range) yields no results, the agent is now instructed to:
+- **Relax Filters**: Automatically try broader criteria, such as removing date boundaries or broadening the query.
+- **Contextual Retries**: Inform the user if results are found in a different timeframe than requested.
+
+### 💬 Descriptive Empty-Result Feedback
+Search results are no longer a silent "No results". The tools now return detailed context:
+- **Applied Filters**: Lists all parameters (IDs, dates, query) that were used, helping the LLM reason about its next search attempt.
+- **Clear Guidance**: Provides direct recommendations to the LLM on how to broaden the search.
+
+### 🆔 Strict Metadata ID Enforcement
+To prevent the LLM from "hallucinating" or guessing correspondent/tag IDs:
+- **Mandatory Lookup**: The `get_paperless_master_data` tool now explicitly warns against guessing IDs and requires using it for lookup first.
+
+### 🧪 Verified Stability
+- **Raw Protocol Checks**: This release has been verified using the raw MCP protocol checker.
+- **Test Suite**: Verified by the full suite of **18 automated tests**.
+
+---
+
 # Release Notes - v0.1.4 🛡️
 
 This release focuses on **Stability and Large Document Support**, ensuring that Searchless-ngx can handle even the most extensive document libraries without hitting API limits.

@@ -33,6 +33,7 @@ If **Paperless** freed you from the burden of physical paper, **Searchless** fre
     - **Interactive Cards**: Search results are presented as beautiful Markdown cards with clickable titles and metadata.
 - **Read-Only**: Zero destructive actions. It uses existing OCR text and never downloads binary PDFs.
 - **Real-Time Sync**: Webhook support for immediate ingestion of new documents.
+- **Search Resilience**: Proactive fallback strategies ensure the LLM finds documents even when initial filters are too restrictive.
 
 ## 🏗️ Architecture
 
@@ -66,6 +67,8 @@ cp .env.example .env
 | `PAPERLESS_TOKEN` | API Token from Paperless settings. |
 | `GEMINI_API_KEY` | Google GenAI key for embeddings. |
 | `PUBLIC_URL` | The URL used for generating clickable links in chat. |
+| `MAX_CHUNKS_PER_DOC` | (Optional) Limit segments per document (Default: 100 ≈ 25 pages). |
+| `BULK_SYNC_LIMIT` | (Optional) Limit initial ingestion to the X newest documents. |
 
 ### 3. Docker Compose
 Start the agent and Open WebUI:
