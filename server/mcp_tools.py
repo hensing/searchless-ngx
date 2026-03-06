@@ -92,54 +92,57 @@ async def search_paperless_metadata(
             corr_id = r.get("correspondent")
             corr_name = metadata_cache.get_correspondent_name(corr_id) if corr_id else "Unknown"
 
-            # 1. Cleaner Snippet with preserved structure
+            # 1. Cleaner Snippet with preserved structure (max 7 lines)
             raw_content = r.get("content", "")
-            # Remove repeated special characters and normalize whitespace but keep newlines
-            clean_text = re.sub(r'[ \t]+', ' ', raw_content) # Collapse horizontal space
-            clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text).strip() # Normalize vertical space
-            snippet = clean_text[:400] + "..." if len(clean_text) > 400 else clean_text
+            clean_text = re.sub(r'[ \t]+', ' ', raw_content) # Collapse spaces
+            clean_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', clean_text).strip() # Normalize vertical space
+
+            # Preserve structure but limit to 7 lines
+            lines = clean_text.split("\n")
+            if len(lines) > 7:
+                snippet = "\n".join(lines[:7]) + "..."
+            else:
+                snippet = clean_text
 
             # 2. Reformat as "Card" with links
             source_url = f"{base_url}/documents/{doc_id}/details"
 
             output.append("\n---")
-            # Header with linked Title and ID
-            output.append(f"### 📄 [{title} (ID: {doc_id})]({source_url})")
+            # Header with linked Title
+            output.append(f"### 📄 [{title}]({source_url})")
 
-            # Correspondent with filter link
-            metadata_line = []
+            # Correspondent & Metadata line
+            metadata_parts = []
             if corr_id:
-                corr_filter_url = f"{base_url}/documents?correspondent__id__in={corr_id}&sort=created&reverse=1&page=1"
-                metadata_line.append(f"**Correspondent:** [{corr_name} (ID: {corr_id})]({corr_filter_url})")
+                corr_url = f"{base_url}/documents?correspondent__id__in={corr_id}&sort=created&reverse=1&page=1"
+                metadata_parts.append(f"**Correspondent:** [{corr_name}]({corr_url})")
             else:
-                metadata_line.append(f"**Correspondent:** Unknown")
+                metadata_parts.append(f"**Correspondent:** Unknown")
 
-            metadata_line.append(f"**Created:** {r.get('created')}")
-            output.append(" | ".join(metadata_line))
+            metadata_parts.append(f"**Created:** {r.get('created')}")
+            output.append(" | ".join(metadata_parts))
 
-            # Tags with filter links
+            # Tags
             doc_tags = r.get("tags", [])
             if doc_tags:
                 tag_links = []
                 for tid in doc_tags:
-                    tag_path = metadata_cache.get_tag_path(tid)
-                    tag_url = f"{base_url}/documents?tags__id__all={tid}&sort=created&reverse=1&page=1"
-                    tag_links.append(f"[`{tag_path}`]({tag_url})")
+                    t_path = metadata_cache.get_tag_path(tid)
+                    t_url = f"{base_url}/documents?tags__id__all={tid}&sort=created&reverse=1&page=1"
+                    tag_links.append(f"[`{t_path}`]({t_url})")
                 output.append(f"**Tags:** {', '.join(tag_links)}")
 
-            # Custom Fields Summary
-            custom_fields = r.get("custom_fields", [])
-            if custom_fields:
-                field_strings = []
-                for cf in custom_fields:
-                    f_id = cf.get("field")
-                    f_val = cf.get("value")
-                    f_name = metadata_cache.get_custom_field_name(f_id)
-                    field_strings.append(f"_{f_name}_: {f_val}")
-                output.append(f"**Custom Fields:** {', '.join(field_strings)}")
+            # Custom Fields
+            cfs = r.get("custom_fields", [])
+            if cfs:
+                cf_strs = []
+                for cf in cfs:
+                    name = metadata_cache.get_custom_field_name(cf['field'])
+                    cf_strs.append(f"`{name}`: {cf['value']}")
+                output.append(f"**Custom Fields:** {', '.join(cf_strs)}")
 
             # Snippet in blockquote
-            indented_snippet = "\n".join([f"> {line}" for line in snippet.split("\n") if line.strip()])
+            indented_snippet = "\n".join([f"> {line}" for line in snippet.split("\n")])
             output.append(f"\n{indented_snippet}")
             output.append("---")
 
@@ -216,10 +219,10 @@ async def semantic_search_with_filters(
         # Robust result extraction
         docs_list = results.get("documents", [])
         docs = docs_list[0] if docs_list else []
-        
+
         metas_list = results.get("metadatas", [])
         metas = metas_list[0] if metas_list else []
-        
+
         dists_list = results.get("distances", [])
         distances = dists_list[0] if dists_list else []
 
@@ -232,23 +235,39 @@ async def semantic_search_with_filters(
         for doc, meta, dist in zip(docs, metas, distances):
             doc_id = meta.get("document_id", "Unknown")
             title = meta.get("title", "Unknown")
+            corr_id = meta.get("correspondent_id")
             corr_name = meta.get("correspondent", "Unknown")
-            # Prefer the string version for display if it exists, fallback to timestamp/Unknown
-            created_display = meta.get("created_str") or meta.get("created", "Unknown")
+            created_str = meta.get("created_str") or meta.get("created", "Unknown")
 
-            # 1. Cleaner Chunk with preserved structure
+            # 1. Cleaner Chunk with preserved structure (limit to 7 lines)
             clean_text = re.sub(r'[ \t]+', ' ', doc)
-            clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
+            clean_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', clean_text).strip()
+
+            lines = clean_text.split("\n")
+            if len(lines) > 7:
+                snippet = "\n".join(lines[:7]) + "..."
+            else:
+                snippet = clean_text
 
             # 2. Reformat as "Card"
             source_url = f"{base_url}/documents/{doc_id}/details"
 
             output.append("\n---")
-            output.append(f"### 📄 [{title} (ID: {doc_id})]({source_url})")
-            output.append(f"**Similarity Score:** {1-dist:.4f} | **Correspondent:** {corr_name} | **Created:** {created_display}")
+            output.append(f"### 📄 [{title}]({source_url})")
+
+            # Correspondent & Metadata line
+            metadata_parts = [f"**Relevance:** {1-dist:.2%}"]
+            if corr_id:
+                corr_url = f"{base_url}/documents?correspondent__id__in={corr_id}&sort=created&reverse=1&page=1"
+                metadata_parts.append(f"**Correspondent:** [{corr_name}]({corr_url})")
+            else:
+                metadata_parts.append(f"**Correspondent:** {corr_name}")
+
+            metadata_parts.append(f"**Created:** {created_str}")
+            output.append(" | ".join(metadata_parts))
 
             # Snippet in blockquote
-            indented_snippet = "\n".join([f"> {line}" for line in clean_text.split("\n") if line.strip()])
+            indented_snippet = "\n".join([f"> {line}" for line in snippet.split("\n")])
             output.append(f"\n{indented_snippet}")
             output.append("---")
 

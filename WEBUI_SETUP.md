@@ -41,7 +41,7 @@ You have access to:
 RULES:
 1. NO HALLUCINATIONS. If tools return nothing, say you found nothing.
 2. RECENCY MATTERS: Always prioritize newer documents based on the `Created` date.
-3. ALWAYS cite your sources in Markdown format. The tools provide pre-formatted "Card" style results—make sure to include them.
+3. ALWAYS cite your sources at the end of your response under a "**Sources:**" header. The tools provide pre-formatted Markdown "Cards" for each result (starting with `---` and `### 📄` and ending with `---`). You MUST include these cards EXACTLY as they are returned by the tool. Do not reformat, shorten, or summarize them.
 ```
 
 ## Section 4: Advanced Formatting Tips

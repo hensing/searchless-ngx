@@ -165,6 +165,7 @@ class SyncJob:
                 "tags": tags_str,
                 "document_type": doc_type_str,
                 "correspondent": corr_str,
+                "correspondent_id": corr_id if corr_id else 0,
                 # Store both string for display and integer for filtering
                 "created": self._date_to_timestamp(created),
                 "created_str": created,
