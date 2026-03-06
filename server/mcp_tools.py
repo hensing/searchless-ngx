@@ -321,27 +321,39 @@ async def get_paperless_master_data(
     CRITICAL: Call this FIRST if the user asks for a specific sender, category, or document type (like 'Invoice' or 'Contract') to get the correct integer IDs.
     """
     try:
-        tags_res = await client.get_tags()
-        corr_res = await client.get_correspondents()
-        dt_res = await client._get("document_types/")
-
-        tags = tags_res.get("results", [])
-        corrs = corr_res.get("results", [])
-        dtypes = dt_res.get("results", []) if dt_res else []
+        await metadata_cache.refresh_if_needed(client)
 
         output = ["=== Correspondents ==="]
-        for c in corrs:
-            output.append(f"ID: {c.get('id')} | Name: {c.get('name')}")
+        # Sort by name for better readability
+        sorted_corrs = sorted(metadata_cache.correspondents.items(), key=lambda x: x[1].lower())
+        for c_id, c_name in sorted_corrs:
+            output.append(f"ID: {c_id} | Name: {c_name}")
 
         output.append("\n=== Tags ===")
-        for t in tags:
-            output.append(f"ID: {t.get('id')} | Name: {t.get('name')}")
+        # Use tag paths for clarity and sort by path
+        sorted_tags = sorted(metadata_cache.tags.items(), key=lambda x: x[1]["path"].lower())
+        for t_id, t_info in sorted_tags:
+            output.append(f"ID: {t_id} | Name: {t_info['path']}")
 
         output.append("\n=== Document Types ===")
-        for dt in dtypes:
-            output.append(f"ID: {dt.get('id')} | Name: {dt.get('name')}")
+        sorted_dtypes = sorted(metadata_cache.document_types.items(), key=lambda x: x[1].lower())
+        for dt_id, dt_name in sorted_dtypes:
+            output.append(f"ID: {dt_id} | Name: {dt_name}")
 
         return "\n".join(output)
     except Exception as e:
         logger.error(f"Error in get_paperless_master_data: {e}")
         return f"Error fetching master data lists: {str(e)}"
+
+@mcp.tool()
+async def refresh_paperless_metadata() -> str:
+    """
+    Force an immediate refresh of the internal metadata cache (Correspondents, Tags, Document Types).
+    Use this if you have recently added or renamed items in Paperless-ngx and they are not showing up yet.
+    """
+    try:
+        await metadata_cache._force_refresh(client)
+        return "Metadata cache successfully refreshed from Paperless-ngx API."
+    except Exception as e:
+        logger.error(f"Error refreshing metadata cache: {e}")
+        return f"Error refreshing metadata cache: {str(e)}"
