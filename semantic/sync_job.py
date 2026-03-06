@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 from loguru import logger
 from api.paperless_client import PaperlessAPIClient
+from core.config import settings
 from semantic.vector_store import vector_store
 from semantic.metadata_cache import metadata_cache
 
@@ -128,6 +129,12 @@ class SyncJob:
 
             # 3. Chunking
             chunks = self._chunk_text(full_text)
+            if len(chunks) > settings.max_chunks_per_doc:
+                logger.warning(
+                    f"Document {document_id} exceeds limit of {settings.max_chunks_per_doc} chunks "
+                    f"(found {len(chunks)}). Truncating."
+                )
+                chunks = chunks[:settings.max_chunks_per_doc]
 
             # 4. Prepare Metadata (Human readable strings)
             # Resolve tags to hierarchical paths

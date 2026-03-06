@@ -1,3 +1,24 @@
+# Release Notes - v0.1.4 🛡️
+
+This release focuses on **Stability and Large Document Support**, ensuring that Searchless-ngx can handle even the most extensive document libraries without hitting API limits.
+
+## Key Improvements in v0.1.4
+
+### 📦 Smart Embedding Batching
+The Gemini Embedding API has a hard limit of 100 requests per batch. Searchless-ngx now automatically detects large documents and splits them into compliant batches. This prevents the `INVALID_ARGUMENT` errors previously encountered with documents exceeding 100 chunks.
+
+### ✂️ Configurable Document Truncation
+To prevent resource exhaustion and ensure high-quality search results, we've introduced a configurable chunk limit:
+- **`MAX_CHUNKS_PER_DOC`**: New environment variable (Default: `100`).
+- **Capacity**: 100 chunks cover approximately **25 DIN-A4 pages** of text.
+- **Graceful Handling**: Documents exceeding this limit are truncated at the end, and a warning is logged.
+
+### 🧪 Enhanced Reliability
+- **Automated Batching Tests**: We've added a new mocked test suite to verify the batching logic without requiring internet access.
+- **Expanded Test Coverage**: This release is verified by **18 automated tests**, ensuring core stability.
+
+---
+
 # Release Notes - v0.1.3 🚀
 
 We are proud to announce the **Initial Release of Searchless-ngx (v0.1.3)**, the first production-ready version of our Agentic RAG MCP Server for Paperless-ngx.
@@ -22,7 +43,7 @@ Search results are now presented as high-quality interactive cards designed spec
 ### 🏗️ Enterprise-Grade Reliability
 - **Paginated Cache**: Efficiently handles large libraries with hundreds of tags and correspondents.
 - **Strict JSON Schema**: 100% compatible with strict MCP parsers (no `anyOf` or `null` types).
-- **Comprehensive Verification**: This release is verified by a full suite of **17 automated tests** covering all core components.
+- **Comprehensive Verification**: This release is verified by a full suite of **automated tests** covering all core components.
 
 ## Installation
 For detailed installation and Open WebUI setup instructions, please refer to the [README.md](README.md) and [WEBUI_SETUP.md](WEBUI_SETUP.md).

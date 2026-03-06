@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     bulk_sync_limit: Optional[int] = None
     paperless_public_url: Optional[str] = None
+    # Maximum chunks per document (100 chunks ≈ 25 DIN-A4 pages)
+    max_chunks_per_doc: int = 100
 
     @property
     def public_url(self) -> str:

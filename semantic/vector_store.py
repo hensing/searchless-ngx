@@ -12,13 +12,21 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         self.model_name = model_name
 
     def __call__(self, input: Documents) -> Embeddings:
-        # Use the new google-genai SDK
-        result = self.client.models.embed_content(
-            model=self.model_name,
-            contents=input
-        )
-        # Extract embeddings and return as list of lists
-        return [e.values for e in result.embeddings]
+        # Google GenAI BatchEmbedContentsRequest has a limit of 100 requests per batch.
+        # We need to manually batch if the input exceeds this limit.
+        max_batch_size = 100
+        all_embeddings = []
+
+        for i in range(0, len(input), max_batch_size):
+            batch = input[i : i + max_batch_size]
+            result = self.client.models.embed_content(
+                model=self.model_name,
+                contents=batch
+            )
+            # Extract embeddings and add to our collection
+            all_embeddings.extend([e.values for e in result.embeddings])
+
+        return all_embeddings
 
 class VectorStore:
     def __init__(self):

@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="paperless-mcp-server",
     description="Searchless-ngx: Agentic RAG and MCP server for Paperless-ngx",
-    version="0.1.3",
+    version="0.1.4",
     lifespan=lifespan
 )
 
