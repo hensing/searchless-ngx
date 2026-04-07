@@ -1,3 +1,45 @@
+# Release Notes - v0.1.6 🧠
+
+This release introduces **Intelligent Entity Resolution & Natural-Language Time Ranges**,
+collapsing what previously required multiple tool calls into a single, typo-tolerant lookup.
+
+## Key Improvements in v0.1.6
+
+### 🧠 LLM-Powered Fuzzy Entity Matching
+`get_paperless_master_data` is now a full "find and return docs" tool in one call:
+- **Substring match first**: fast path for exact/partial name matches.
+- **Gemini Flash fallback**: if nothing matches, an LLM resolves typos, abbreviations,
+  and semantic equivalences (e.g. "DB" → "Deutsche Bahn", "armazzon" → "Amazon").
+- **Parallel document search**: matched entity IDs are searched concurrently; results are
+  deduplicated and returned as a markdown table with Custom Fields inline.
+- **Zero extra tool calls**: combine `filter` + `time_range` in one call to get documents
+  directly — no separate `get_current_date` or `search_paperless_metadata` needed.
+
+### 🗓️ Natural-Language Time Ranges
+Both `get_paperless_master_data` and `semantic_search_with_filters` now accept a
+`time_range` parameter:
+- Supported expressions: `"last year"`, `"this year"`, `"last month"`, `"this month"`,
+  `"last quarter"`, or a 4-digit year like `"2024"`.
+- German variants supported: `"letztes Jahr"`, `"diesen Monat"`, etc.
+- Automatically resolved to `created_after`/`created_before` date pairs.
+
+### 📅 New `get_current_date` Tool
+Returns today's date in a structured format for use in precise date arithmetic when
+`time_range` doesn't cover the expression.
+
+### 🔍 Improved Search Guidance
+- `search_paperless_metadata` now warns the LLM that Paperless uses **AND logic**: all
+  words in `query` must appear in the document. Guidance: one keyword per call; use
+  multiple calls for OR semantics.
+- Every result block now opens with a `> **Search method:**` header so the LLM and user
+  can see exactly which filters were applied.
+- Snippet preview expanded from 7 to 10 lines.
+
+### 🧪 Verified
+Tested end-to-end via MCP tool calls against a live Paperless-ngx instance.
+
+---
+
 # Release Notes - v0.1.5 🧭
 
 This release introduces **Search Resilience & Smart Fallback Strategies**, making the agent much more proactive when initial search results are empty.

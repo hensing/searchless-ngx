@@ -90,6 +90,8 @@ async def test_semantic_search_with_filters_date_conversion():
 
         await semantic_search_with_filters(
             query="test",
+            n_results=10,
+            time_range="",
             document_id=0,
             created_after="2024-02-15",
             created_before="",
@@ -116,13 +118,15 @@ async def test_semantic_search_with_filters_no_results():
 
         result = await semantic_search_with_filters(
             query="test",
+            n_results=10,
+            time_range="",
             document_id=0,
             created_after="",
             created_before="",
             added_after="",
             added_before=""
         )
-        assert "No relevant semantic chunks found" in result
+        assert "No relevant documents found" in result
 
 @pytest.mark.asyncio
 async def test_semantic_search_with_filters_empty_lists():
@@ -136,10 +140,12 @@ async def test_semantic_search_with_filters_empty_lists():
 
         result = await semantic_search_with_filters(
             query="test",
+            n_results=10,
+            time_range="",
             document_id=0,
             created_after="",
             created_before="",
             added_after="",
             added_before=""
         )
-        assert "No relevant semantic chunks found" in result
+        assert "No relevant documents found" in result
