@@ -1,3 +1,54 @@
+# Release Notes - v0.1.7 🧪
+
+This release focuses on **Test Coverage & Observability**, expanding the test suite from 18 to 55 tests and improving sync logging for better operational visibility.
+
+## Key Improvements in v0.1.7
+
+### 🧪 Significantly Expanded Test Suite (18 → 55 tests)
+
+Three new test modules cover previously untested code paths:
+
+- **`test_mcp_helpers.py`** — tests for non-trivial MCP logic:
+  - `_resolve_time_range`: all relative expressions (`last year`, `this year`, `last month`,
+    `this month`, `last quarter`, explicit year) including German variants and January/Q1
+    wrap-around edge cases.
+  - `get_document_details`: conditional output sections (tags, custom fields, notes) appear
+    only when the document actually contains them.
+  - `semantic_search_with_filters` + `time_range`: integration test verifying the full
+    pipeline from `time_range="2024"` through `_resolve_time_range` and `_date_to_timestamp`
+    down to the correct ChromaDB `$and` filter.
+
+- **`test_sync_job_helpers.py`** — tests for `SyncJob` pure helpers:
+  - `_format_custom_field_value`: all 8 data types (`boolean`, `integer`, `float`, `monetary`,
+    `date`, `string`, `url`, `documentlink`) including `None` and invalid-value handling.
+  - `_date_to_timestamp`: ISO date, ISO datetime with UTC timezone, empty and invalid strings.
+
+- **Extended `test_metadata_cache.py`** — additional tests:
+  - `refresh_if_needed` triggers when stale (TTL expired or never refreshed).
+  - `refresh_if_needed` skips when cache is still fresh.
+  - TTL expiry after elapsed seconds.
+  - 3-level tag hierarchy resolves to full path (`Root/Middle/Leaf`).
+
+### 🔍 Improved Sync Logging
+
+`sync_document` now clearly reports **why** a document is being synced:
+- `Document 42 'Invoice Amazon' is NEW — adding to vector store.`
+- `Document 42 'Invoice Amazon' was modified (2024-01-01 → 2024-03-15) — updating vector store.`
+- `Document 42 'Invoice Amazon' — force re-sync.`
+
+Previously, a sync triggered silently beyond the "Starting sync" line, making it impossible to tell from the console whether a document was new, updated, or force-resynced.
+
+### 🐛 Bug Fixes
+
+- `run_test.sh` was using `pytest` directly instead of `uv run pytest`, causing failures in
+  the Docker environment where pytest is installed inside a `uv` virtual environment.
+  The script now also builds the Docker image automatically before running tests.
+- Fixed three `test_semantic_search_with_filters_*` tests that omitted the `n_results` and
+  `time_range` parameters. Without them, Python fell back to the `FieldInfo` default object
+  rather than the actual default value, causing runtime errors.
+
+---
+
 # Release Notes - v0.1.6 🧠
 
 This release introduces **Intelligent Entity Resolution & Natural-Language Time Ranges**,

@@ -100,16 +100,30 @@ class SyncJob:
             modified_date = doc.get("modified", "")
 
             # --- Lifecycle Skip Check ---
+            existing_metas = []
             if not force:
                 existing = vector_store.search(
                     query="dummy", # Query text is required but irrelevant here due to filter
                     n_results=1,
                     where_filter={"document_id": document_id}
                 )
-                metas = existing.get("metadatas", [[]])[0]
-                if metas and metas[0].get("modified") == modified_date:
+                existing_metas = existing.get("metadatas", [[]])[0]
+                if existing_metas and existing_metas[0].get("modified") == modified_date:
                     logger.info(f"Document {document_id} is unmodified. Skipping sync.")
                     return
+
+            # Log the reason for syncing
+            title = doc.get("title", "")
+            if force:
+                logger.info(f"Document {document_id} '{title}' — force re-sync.")
+            elif not existing_metas:
+                logger.info(f"Document {document_id} '{title}' is NEW — adding to vector store.")
+            else:
+                old_modified = existing_metas[0].get("modified", "?")
+                logger.info(
+                    f"Document {document_id} '{title}' was modified "
+                    f"({old_modified} → {modified_date}) — updating vector store."
+                )
 
             if not content:
                 logger.warning(f"Document {document_id} has no parsed content. Skipping content chunking.")
