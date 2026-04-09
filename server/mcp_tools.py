@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import Field
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 from google import genai
 from api.paperless_client import PaperlessAPIClient
 from semantic.vector_store import vector_store
@@ -99,6 +99,7 @@ async def get_current_date() -> str:
 
 @mcp.tool()
 async def search_paperless_metadata(
+    ctx: Context,
     query: str = Field(default="", description="The search keyword. Leave empty to list the most recent documents."),
     page_size: int = Field(default=5, description="Number of results to return (max 50)."),
     tags: str = Field(default="", description="Comma separated tag IDs"),
@@ -154,9 +155,11 @@ async def search_paperless_metadata(
         applied_filters.append(f"created_before='{created_before}'")
 
     try:
+        await ctx.info("Searching Paperless metadata...")
         await metadata_cache.refresh_if_needed(client)
         response = await client.get_documents(params=params)
         results = response.get("results", [])
+        await ctx.info(f"Found {len(results)} document(s)")
 
         # Build search method label with resolved names for transparent reporting
         method_parts = []
@@ -269,6 +272,7 @@ def _date_to_timestamp(date_str: str) -> int:
 
 @mcp.tool()
 async def semantic_search_with_filters(
+    ctx: Context,
     query: str = Field(..., description="The conceptual search query."),
     n_results: int = Field(default=10, description="Number of results to return (default 10, max 25)."),
     time_range: str = Field(default="", description="Natural language time period: 'last year', 'this year', 'last month', 'this month', 'last quarter', or '2024'. Use this instead of created_after/before for common expressions."),
@@ -311,6 +315,7 @@ async def semantic_search_with_filters(
     - Never stay silent. Never ask the user for clarification before exhausting all search options.
     """
     try:
+        await ctx.info("Running semantic search...")
         # Resolve time_range to explicit dates if not already provided
         if time_range and not (created_after or created_before):
             created_after, created_before = _resolve_time_range(time_range)
@@ -357,6 +362,7 @@ async def semantic_search_with_filters(
         )
 
         # Robust result extraction
+        await ctx.info("Ranking results...")
         docs_list = results.get("documents", [])
         docs = docs_list[0] if docs_list else []
 
@@ -436,6 +442,7 @@ async def semantic_search_with_filters(
 
 @mcp.tool()
 async def get_document_details(
+    ctx: Context,
     document_id: int = Field(default=0, description="The integer ID of the document to fetch.")
 ) -> str:
     """
@@ -445,6 +452,7 @@ async def get_document_details(
     Calling this tool multiple times for different document IDs is expected and correct.
     """
     try:
+        await ctx.info(f"Fetching document {document_id}...")
         doc = await client.get_document(document_id)
         notes = await client.get_document_notes(document_id)
 
@@ -539,6 +547,7 @@ def _resolve_time_range(time_range: str) -> tuple[str, str]:
 
 @mcp.tool()
 async def get_paperless_master_data(
+    ctx: Context,
     filter: str = Field(default="", description="Search term: correspondent or tag name, category, or concept (e.g. 'Amazon', 'mobility', 'insurance')."),
     time_range: str = Field(default="", description="Natural language time period: 'last year', 'this year', 'last month', 'this month', 'last quarter', or a 4-digit year like '2024'. Leave empty if you need all time."),
     created_after: str = Field(default="", description="Explicit date override (YYYY-MM-DD). Use time_range instead for common expressions."),
@@ -587,6 +596,7 @@ async def get_paperless_master_data(
     - Source awareness: on invoices, user data is in the "bill to" section.
     """
     try:
+        await ctx.info("Loading Paperless data...")
         await metadata_cache.refresh_if_needed(client)
 
         # Resolve time_range to explicit dates if not already provided
@@ -620,6 +630,7 @@ async def get_paperless_master_data(
         # Pass 2: LLM fuzzy match for anything not found via substring
         if not corrs_matched and not tags_matched and not dtypes_matched:
             logger.info(f"No substring match for '{filter}' — trying LLM fuzzy match")
+            await ctx.info(f"No exact match for '{filter}', trying fuzzy matching...")
             all_corr_names = [name for _, name in sorted_corrs]
             all_tag_names  = [info["path"] for _, info in sorted_tags]
 
@@ -635,6 +646,14 @@ async def get_paperless_master_data(
 
         corr_ids = [str(cid) for cid, _ in corrs_matched]
         tag_ids  = [str(tid) for tid, _ in tags_matched]
+
+        if corrs_matched or tags_matched or dtypes_matched:
+            matched_names = ", ".join(
+                [name for _, name in corrs_matched] +
+                [info["path"] for _, info in tags_matched] +
+                [name for _, name in dtypes_matched]
+            )
+            await ctx.info(f"Matched: {matched_names} — searching documents...")
 
         # Still nothing → semantic search fallback
         if not corrs_matched and not tags_matched and not dtypes_matched:
@@ -667,6 +686,7 @@ async def get_paperless_master_data(
                 search_tasks.append(client.get_documents(params=p))
                 task_labels.append(f"tags:{','.join(tag_ids)}")
 
+            await ctx.info(f"Searching {len(search_tasks)} source(s)...")
             raw_results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
             # Deduplicate by document ID
@@ -774,12 +794,13 @@ async def get_paperless_master_data(
         return f"Error fetching master data lists: {str(e)}"
 
 @mcp.tool()
-async def refresh_paperless_metadata() -> str:
+async def refresh_paperless_metadata(ctx: Context) -> str:
     """
     Force an immediate refresh of the internal metadata cache (Correspondents, Tags, Document Types).
     Use this if you have recently added or renamed items in Paperless-ngx and they are not showing up yet.
     """
     try:
+        await ctx.info("Refreshing data from Paperless-ngx...")
         await metadata_cache._force_refresh(client)
         return "Metadata cache successfully refreshed from Paperless-ngx API."
     except Exception as e:

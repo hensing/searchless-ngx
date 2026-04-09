@@ -1,6 +1,6 @@
 [project]
 name = "paperless-mcp-server"
-version = "0.2.0"
+version = "0.3.0"
 description = "A read-only MCP server for Agentic RAG over Paperless-ngx documents."
 readme = "README.md"
 authors = [

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from server.mcp_tools import search_paperless_metadata
 
 @pytest.mark.asyncio
-async def test_search_paperless_metadata_empty_query():
+async def test_search_paperless_metadata_empty_query(mock_ctx):
     # Mock dependencies
     with patch("server.mcp_tools.client") as mock_client, \
          patch("server.mcp_tools.metadata_cache") as mock_cache, \
@@ -30,6 +30,7 @@ async def test_search_paperless_metadata_empty_query():
 
         # Call with empty query, providing defaults because we call directly (bypassing FastMCP injection)
         result = await search_paperless_metadata(
+            ctx=mock_ctx,
             query="",
             page_size=5,
             tags="",
@@ -52,7 +53,7 @@ async def test_search_paperless_metadata_empty_query():
         assert "http://paperless.test/documents/1/details" in result
 
 @pytest.mark.asyncio
-async def test_search_paperless_metadata_with_query():
+async def test_search_paperless_metadata_with_query(mock_ctx):
     with patch("server.mcp_tools.client") as mock_client, \
          patch("server.mcp_tools.metadata_cache") as mock_cache:
 
@@ -60,6 +61,7 @@ async def test_search_paperless_metadata_with_query():
         mock_client.get_documents = AsyncMock(return_value={"results": []})
 
         await search_paperless_metadata(
+            ctx=mock_ctx,
             query="invoice",
             page_size=5,
             tags="",
@@ -76,7 +78,7 @@ async def test_search_paperless_metadata_with_query():
 from server.mcp_tools import semantic_search_with_filters
 
 @pytest.mark.asyncio
-async def test_semantic_search_with_filters_date_conversion():
+async def test_semantic_search_with_filters_date_conversion(mock_ctx):
     with patch("server.mcp_tools.vector_store") as mock_vs:
         mock_vs.search.return_value = {
             "documents": [["chunk1"]],
@@ -89,6 +91,7 @@ async def test_semantic_search_with_filters_date_conversion():
         # However, it's safer to just check if it's an int.
 
         await semantic_search_with_filters(
+            ctx=mock_ctx,
             query="test",
             n_results=10,
             time_range="",
@@ -107,7 +110,7 @@ async def test_semantic_search_with_filters_date_conversion():
         assert where["created"]["$gte"] > 0
 
 @pytest.mark.asyncio
-async def test_semantic_search_with_filters_no_results():
+async def test_semantic_search_with_filters_no_results(mock_ctx):
     with patch("server.mcp_tools.vector_store") as mock_vs:
         # Test the robust extraction fix
         mock_vs.search.return_value = {
@@ -117,6 +120,7 @@ async def test_semantic_search_with_filters_no_results():
         }
 
         result = await semantic_search_with_filters(
+            ctx=mock_ctx,
             query="test",
             n_results=10,
             time_range="",
@@ -129,7 +133,7 @@ async def test_semantic_search_with_filters_no_results():
         assert "No relevant documents found" in result
 
 @pytest.mark.asyncio
-async def test_semantic_search_with_filters_empty_lists():
+async def test_semantic_search_with_filters_empty_lists(mock_ctx):
     with patch("server.mcp_tools.vector_store") as mock_vs:
         # Test the robust extraction fix with empty nested lists
         mock_vs.search.return_value = {
@@ -139,6 +143,7 @@ async def test_semantic_search_with_filters_empty_lists():
         }
 
         result = await semantic_search_with_filters(
+            ctx=mock_ctx,
             query="test",
             n_results=10,
             time_range="",

@@ -1,3 +1,39 @@
+# Release Notes - v0.3.0 💬
+
+This release brings **real-time status messages** during tool execution and a **system prompt fix** for correct outgoing invoice classification.
+
+## What's new in v0.3.0
+
+### 💬 Intermediate Status Updates During Tool Execution (mcp_tools.py)
+
+All MCP tools now emit live status messages while processing, using FastMCP's `Context` injection (`ctx.info()`). Open WebUI displays these as inline status text while the spinner is active — no more waiting in the dark.
+
+Status messages per tool:
+
+| Tool | Messages |
+|------|----------|
+| `search_paperless_metadata` | "Searching Paperless metadata..." → "Found N document(s)" |
+| `semantic_search_with_filters` | "Running semantic search..." → "Ranking results..." |
+| `get_document_details` | "Fetching document {id}..." |
+| `get_paperless_master_data` | "Loading Paperless data..." → "No exact match, trying fuzzy matching..." → "Matched: … — searching documents..." → "Searching N source(s)..." |
+| `refresh_paperless_metadata` | "Refreshing data from Paperless-ngx..." |
+
+Messages are user-friendly (no jargon like "vector database" or "metadata cache").
+
+### 🧾 Outgoing Invoice Classification Fix (WEBUI_SETUP.md)
+
+Added a new **Rule 4** to the system prompt template that prevents the LLM from misclassifying self-issued invoices as expenses:
+
+> *"When the OCR text shows the user's name or one of their businesses in the sender position (letterhead/header), the document is an outgoing invoice — classify it as income, not an expense. The Paperless correspondent in this case is the customer, not a supplier."*
+
+Key signals the LLM is now instructed to check:
+- User's own name/address in the document header
+- Phrases like "erlaube ich mir … in Rechnung zu stellen", "for services rendered", or "Invoice from [user name]"
+
+This fixes cases where a customer's name as Paperless correspondent caused the LLM to treat outgoing invoices as incoming expenses.
+
+---
+
 # Release Notes - v0.2.0 🗂️
 
 This release introduces **Open WebUI UX improvements** and **smarter tag-aware search guidance**, making the assistant more context-aware and the source citations more compact.

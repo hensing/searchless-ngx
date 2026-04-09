@@ -115,7 +115,7 @@ def _make_mock_document(*, tags=None, custom_fields=None, content="OCR text"):
 
 
 @pytest.mark.asyncio
-async def test_get_document_details_includes_all_sections():
+async def test_get_document_details_includes_all_sections(mock_ctx):
     """Full document: tags, custom fields, and notes must all appear in output."""
     with patch("server.mcp_tools.client") as mock_client, \
          patch("server.mcp_tools.metadata_cache") as mock_cache, \
@@ -134,7 +134,7 @@ async def test_get_document_details_includes_all_sections():
         mock_cache.get_correspondent_name.return_value = "Unknown"
         mock_cache.get_document_type_name.return_value = "Unknown"
 
-        result = await get_document_details(document_id=1)
+        result = await get_document_details(ctx=mock_ctx, document_id=1)
 
         assert "Finance/Invoice" in result
         assert "Betrag" in result
@@ -144,7 +144,7 @@ async def test_get_document_details_includes_all_sections():
 
 
 @pytest.mark.asyncio
-async def test_get_document_details_omits_optional_sections_when_absent():
+async def test_get_document_details_omits_optional_sections_when_absent(mock_ctx):
     """Document with no tags, no custom fields, no notes must not render those sections."""
     with patch("server.mcp_tools.client") as mock_client, \
          patch("server.mcp_tools.metadata_cache") as mock_cache, \
@@ -156,7 +156,7 @@ async def test_get_document_details_omits_optional_sections_when_absent():
         mock_cache.get_correspondent_name.return_value = "Unknown"
         mock_cache.get_document_type_name.return_value = "Unknown"
 
-        result = await get_document_details(document_id=1)
+        result = await get_document_details(ctx=mock_ctx, document_id=1)
 
         assert "Tags" not in result
         assert "Custom Fields" not in result
@@ -174,7 +174,7 @@ from server.mcp_tools import semantic_search_with_filters
 
 
 @pytest.mark.asyncio
-async def test_semantic_search_time_range_builds_correct_chroma_filter():
+async def test_semantic_search_time_range_builds_correct_chroma_filter(mock_ctx):
     """
     time_range="2024" must produce a $and filter with both $gte (Jan 1) and $lte (Dec 31)
     as Unix timestamps. This tests the _resolve_time_range → _date_to_timestamp pipeline.
@@ -183,6 +183,7 @@ async def test_semantic_search_time_range_builds_correct_chroma_filter():
         mock_vs.search.return_value = {"documents": [], "metadatas": [], "distances": []}
 
         await semantic_search_with_filters(
+            ctx=mock_ctx,
             query="invoices",
             n_results=5,
             time_range="2024",

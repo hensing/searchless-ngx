@@ -1,6 +1,6 @@
 import pytest
 import chromadb
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 @pytest.fixture(autouse=True)
@@ -10,6 +10,13 @@ def mock_config():
         with patch("core.config.settings.paperless_token", "mock-token"):
             with patch("core.config.settings.gemini_api_key", "mock-gemini-key"):
                 yield
+
+@pytest.fixture
+def mock_ctx():
+    """Provides a mock FastMCP Context for tools that require ctx injection."""
+    ctx = MagicMock()
+    ctx.info = AsyncMock()
+    return ctx
 
 @pytest.fixture
 def mock_vector_store():
