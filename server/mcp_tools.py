@@ -21,7 +21,6 @@ import os
 mcp = FastMCP(
     "paperless-mcp-server",
     stateless_http=True,
-    json_response=True,
     host="0.0.0.0",
     port=8001,
     transport_security={
@@ -156,9 +155,11 @@ async def search_paperless_metadata(
 
     try:
         await ctx.info("Searching Paperless metadata...")
+        logger.debug("search_paperless_metadata: fetching documents")
         await metadata_cache.refresh_if_needed(client)
         response = await client.get_documents(params=params)
         results = response.get("results", [])
+        logger.debug(f"search_paperless_metadata: found {len(results)} document(s)")
         await ctx.info(f"Found {len(results)} document(s)")
 
         # Build search method label with resolved names for transparent reporting
@@ -316,6 +317,7 @@ async def semantic_search_with_filters(
     """
     try:
         await ctx.info("Running semantic search...")
+        logger.debug(f"semantic_search_with_filters: query='{query}'")
         # Resolve time_range to explicit dates if not already provided
         if time_range and not (created_after or created_before):
             created_after, created_before = _resolve_time_range(time_range)
@@ -453,6 +455,7 @@ async def get_document_details(
     """
     try:
         await ctx.info(f"Fetching document {document_id}...")
+        logger.debug(f"get_document_details: fetching document {document_id}")
         doc = await client.get_document(document_id)
         notes = await client.get_document_notes(document_id)
 
@@ -582,11 +585,12 @@ async def get_paperless_master_data(
     WHEN TO USE:
     - For ANY question about documents from a named entity or category.
     - With time_range for date-scoped queries — no separate get_current_date needed.
-    - Without time_range: returns all matching documents (no date filter) and IDs.
+    - Without time_range: returns all matching documents across all time.
     - ALWAYS call with a specific filter. Without filter, only counts are returned.
 
     AFTER THIS CALL:
-    - If amounts appear in Custom Fields in the table, you can answer directly.
+    - Documents are returned directly as a table — no follow-up search needed.
+    - If amounts appear in Custom Fields, answer directly from the table.
     - If amounts are missing, call get_document_details for specific Doc IDs.
     - For concept searches with no named entity, use semantic_search_with_filters instead.
 
@@ -597,6 +601,7 @@ async def get_paperless_master_data(
     """
     try:
         await ctx.info("Loading Paperless data...")
+        logger.debug(f"get_paperless_master_data: filter='{filter}', time_range='{time_range}'")
         await metadata_cache.refresh_if_needed(client)
 
         # Resolve time_range to explicit dates if not already provided
@@ -653,6 +658,7 @@ async def get_paperless_master_data(
                 [info["path"] for _, info in tags_matched] +
                 [name for _, name in dtypes_matched]
             )
+            logger.debug(f"get_paperless_master_data: matched '{matched_names}'")
             await ctx.info(f"Matched: {matched_names} — searching documents...")
 
         # Still nothing → semantic search fallback
@@ -663,131 +669,92 @@ async def get_paperless_master_data(
                 "and date filters if applicable."
             )
 
-        # --- DATE MODE: run searches in parallel and return document table ---
-        if created_after or created_before:
-            date_label = f"{created_after or '…'} → {created_before or '…'}"
-            base_params: Dict[str, Any] = {"ordering": "-created", "page_size": min(page_size, 50)}
-            if created_after:
-                base_params["created__date__gte"] = created_after
-            if created_before:
-                base_params["created__date__lte"] = created_before
+        # --- SEARCH MODE: always fetch documents (with or without date filters) ---
+        date_label = f"{created_after or '…'} → {created_before or '…'}" if (created_after or created_before) else "all time"
+        base_params: Dict[str, Any] = {"ordering": "-created", "page_size": min(page_size, 50)}
+        if created_after:
+            base_params["created__date__gte"] = created_after
+        if created_before:
+            base_params["created__date__lte"] = created_before
 
-            # Build parallel search tasks
-            search_tasks = []
-            task_labels  = []
+        search_tasks = []
+        task_labels  = []
 
-            for cid, cname in corrs_matched:
-                p = {**base_params, "correspondent__id": cid}
-                search_tasks.append(client.get_documents(params=p))
-                task_labels.append(f"correspondent:{cname}")
+        for cid, cname in corrs_matched:
+            p = {**base_params, "correspondent__id": cid}
+            search_tasks.append(client.get_documents(params=p))
+            task_labels.append(f"correspondent:{cname}")
 
-            if tag_ids:
-                p = {**base_params, "tags__id__in": ",".join(tag_ids)}
-                search_tasks.append(client.get_documents(params=p))
-                task_labels.append(f"tags:{','.join(tag_ids)}")
-
-            await ctx.info(f"Searching {len(search_tasks)} source(s)...")
-            raw_results = await asyncio.gather(*search_tasks, return_exceptions=True)
-
-            # Deduplicate by document ID
-            seen: Dict[int, Dict[str, Any]] = {}
-            for result, label in zip(raw_results, task_labels):
-                if isinstance(result, Exception):
-                    logger.warning(f"Search failed for {label}: {result}")
-                    continue
-                for doc in result.get("results", []):
-                    doc_id = doc.get("id")
-                    if doc_id and doc_id not in seen:
-                        seen[doc_id] = doc
-
-            all_docs = sorted(seen.values(), key=lambda d: d.get("created", ""), reverse=True)
-
-            if not all_docs:
-                matched_names = ", ".join(
-                    [name for _, name in corrs_matched] +
-                    [info["path"] for _, info in tags_matched]
-                )
-                return (
-                    f"> **Search method:** entity lookup — filter=\"{filter}\" | {date_label}\n\n"
-                    f"No documents found for '{filter}' in this date range.\n"
-                    f"Matched entities: {matched_names}\n"
-                    "Try calling semantic_search_with_filters with the same date range."
-                )
-
-            base_url = settings.public_url.rstrip('/')
-            output = [
-                f"> **Search method:** entity lookup — filter=\"{filter}\" | {date_label}",
-                f"> **Matched:** {', '.join([name for _, name in corrs_matched] + [info['path'] for _, info in tags_matched])}",
-                f"> **Documents found:** {len(all_docs)} (deduplicated)",
-                "",
-                "| Doc ID | Title | Correspondent | Date | Custom Fields |",
-                "|--------|-------|---------------|------|---------------|",
-            ]
-
-            for doc in all_docs:
-                doc_id   = doc.get("id", "")
-                title    = doc.get("title", "Unknown")
-                corr_id  = doc.get("correspondent")
-                corr_name = metadata_cache.get_correspondent_name(corr_id) if corr_id else "—"
-                created  = (doc.get("created") or "")[:10]
-
-                # Custom fields — compact key:value pairs
-                cfs = doc.get("custom_fields", [])
-                cf_str = ""
-                if cfs:
-                    parts = []
-                    for cf in cfs:
-                        cf_name = metadata_cache.get_custom_field_name(cf.get("field"))
-                        val = cf.get("value")
-                        if val not in (None, "", 0, 0.0):
-                            parts.append(f"{cf_name}: {val}")
-                    cf_str = "; ".join(parts)
-
-                doc_url = f"{base_url}/documents/{doc_id}/details"
-                title_link = f"[{title}]({doc_url})"
-                output.append(f"| {doc_id} | {title_link} | {corr_name} | {created} | {cf_str} |")
-
-            output.append("")
-            output.append(
-                "If the amounts or details you need are not visible in Custom Fields above, "
-                "call `get_document_details` for the specific Doc IDs."
-            )
-            return "\n".join(output)
-
-        # --- ID-ONLY MODE: no dates given, return IDs + NEXT ACTION ---
-        output = []
-        if corr_ids:
-            output.append(f"**Correspondent IDs:** {', '.join(corr_ids)}")
-            for cid, name in corrs_matched:
-                output.append(f"  - ID {cid}: {name}")
         if tag_ids:
-            output.append(f"**Tag IDs:** {','.join(tag_ids)}")
-            for tid, info in tags_matched:
-                output.append(f"  - ID {tid}: {info['path']}")
-        if dtypes_matched:
-            output.append("**Document Types:**")
-            for did, name in dtypes_matched:
-                output.append(f"  - ID {did}: {name}")
+            p = {**base_params, "tags__id__in": ",".join(tag_ids)}
+            search_tasks.append(client.get_documents(params=p))
+            task_labels.append(f"tags:{','.join(tag_ids)}")
 
-        next_steps = ["**NEXT ACTION (execute now):**"]
-        if corr_ids:
-            next_steps.append(
-                f"- For each correspondent ID ({', '.join(corr_ids)}): "
-                "call search_paperless_metadata(correspondent=<id>, page_size=50) with date filters."
+        logger.debug(f"get_paperless_master_data: searching {len(search_tasks)} source(s) in parallel")
+        await ctx.info(f"Searching {len(search_tasks)} source(s)...")
+        raw_results = await asyncio.gather(*search_tasks, return_exceptions=True)
+
+        # Deduplicate by document ID
+        seen: Dict[int, Dict[str, Any]] = {}
+        for result, label in zip(raw_results, task_labels):
+            if isinstance(result, Exception):
+                logger.warning(f"Search failed for {label}: {result}")
+                continue
+            for doc in result.get("results", []):
+                doc_id = doc.get("id")
+                if doc_id and doc_id not in seen:
+                    seen[doc_id] = doc
+
+        all_docs = sorted(seen.values(), key=lambda d: d.get("created", ""), reverse=True)
+
+        if not all_docs:
+            matched_names = ", ".join(
+                [name for _, name in corrs_matched] +
+                [info["path"] for _, info in tags_matched]
             )
-        if tag_ids:
-            next_steps.append(
-                f"- For tags: call search_paperless_metadata(tags=\"{','.join(tag_ids)}\", "
-                "page_size=50) with date filters."
+            return (
+                f"> **Search method:** entity lookup — filter=\"{filter}\" | {date_label}\n\n"
+                f"No documents found for '{filter}'.\n"
+                f"Matched entities: {matched_names}\n"
+                "Try calling semantic_search_with_filters with the same query."
             )
-        next_steps.append(
-            f"- Also call semantic_search_with_filters(query=\"{filter} related documents\", "
-            "n_results=20) with date filters to catch untagged documents."
-        )
-        next_steps.append("DO NOT STOP HERE — execute these calls now.")
+
+        base_url = settings.public_url.rstrip('/')
+        output = [
+            f"> **Search method:** entity lookup — filter=\"{filter}\" | {date_label}",
+            f"> **Matched:** {', '.join([name for _, name in corrs_matched] + [info['path'] for _, info in tags_matched])}",
+            f"> **Documents found:** {len(all_docs)} (deduplicated)",
+            "",
+            "| Doc ID | Title | Correspondent | Date | Custom Fields |",
+            "|--------|-------|---------------|------|---------------|",
+        ]
+
+        for doc in all_docs:
+            doc_id    = doc.get("id", "")
+            title     = doc.get("title", "Unknown")
+            corr_id   = doc.get("correspondent")
+            corr_name = metadata_cache.get_correspondent_name(corr_id) if corr_id else "—"
+            created   = (doc.get("created") or "")[:10]
+
+            cfs = doc.get("custom_fields", [])
+            cf_str = ""
+            if cfs:
+                parts = []
+                for cf in cfs:
+                    cf_name = metadata_cache.get_custom_field_name(cf.get("field"))
+                    val = cf.get("value")
+                    if val not in (None, "", 0, 0.0):
+                        parts.append(f"{cf_name}: {val}")
+                cf_str = "; ".join(parts)
+
+            doc_url = f"{base_url}/documents/{doc_id}/details"
+            output.append(f"| {doc_id} | [{title}]({doc_url}) | {corr_name} | {created} | {cf_str} |")
+
         output.append("")
-        output.extend(next_steps)
-
+        output.append(
+            "If amounts or details are missing from Custom Fields above, "
+            "call `get_document_details` for the specific Doc IDs."
+        )
         return "\n".join(output)
     except Exception as e:
         logger.error(f"Error in get_paperless_master_data: {e}")
@@ -801,6 +768,7 @@ async def refresh_paperless_metadata(ctx: Context) -> str:
     """
     try:
         await ctx.info("Refreshing data from Paperless-ngx...")
+        logger.debug("refresh_paperless_metadata: force-refreshing metadata cache")
         await metadata_cache._force_refresh(client)
         return "Metadata cache successfully refreshed from Paperless-ngx API."
     except Exception as e:

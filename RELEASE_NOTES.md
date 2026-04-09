@@ -1,3 +1,38 @@
+# Release Notes - v0.3.1 🔧
+
+This release adds a **bulk sync endpoint**, **smart startup sync**, and **cleaner logging**.
+
+## What's new in v0.3.1
+
+### 🔄 Bulk Sync & Smart Startup Sync (`semantic/bulk_sync.py`, `semantic/vector_store.py`, `server/app.py`)
+
+ChromaDB was never populated for existing Paperless documents — only per-document webhooks worked. Fixed with:
+
+- **`POST /sync/all`**: Triggers a full background sync of all Paperless documents into ChromaDB. Respects `BULK_SYNC_LIMIT`. Accepts `?force=true` to re-embed already-synced documents.
+- **`GET /sync/status`**: Returns `paperless_documents` count vs. `chroma_chunks` count so you can verify sync coverage.
+- **Smart startup sync**: On every container start, a watermark-based incremental sync runs in the background:
+  1. `VectorStore.scan_chroma_state()` — single ChromaDB pass (no Gemini) returns the newest `added` date, all doc IDs, and any incomplete entries (missing `chunk_0`)
+  2. Two parallel Paperless queries: `added__date__gt=DATE` + `modified__date__gt=DATE` — only fetches docs that actually changed
+  3. ID-diff against all Paperless IDs → orphaned ChromaDB entries deleted
+  4. Gemini embeddings only for new/changed/incomplete documents
+  - Falls back to full delta scan on first run (empty ChromaDB) or when `force=True`
+
+### 🪵 Cleaner Log Output (`core/logger.py`, `semantic/sync_job.py`, `semantic/vector_store.py`)
+
+The log was flooded with `/health` pings, httpx lines, and per-document status messages. Fixed:
+
+- **`/health` requests** permanently filtered from the uvicorn access log.
+- **httpx/httpcore** logs suppressed at `INFO`; shown only at `LOG_LEVEL=DEBUG`.
+- **`LOG_LEVEL`** env var now also controls httpx verbosity. Documented in `.env.example`.
+- Per-document routine messages (`Starting sync`, `Successfully synced`, `upserted N chunks`, `Existing chunks deleted`, `unmodified. Skipping`) moved to `DEBUG`.
+- Startup scan shows progress every 250 documents: `Scanning Paperless (250/1787)...`
+
+### 🧪 Test fixes (`tests/`)
+
+Added `mock_ctx` fixture to `conftest.py` and passed it to all tool call sites in `test_mcp_tools.py` and `test_mcp_helpers.py` — required after `ctx: Context` was added to tool signatures in v0.3.0.
+
+---
+
 # Release Notes - v0.3.0 💬
 
 This release brings **real-time status messages** during tool execution and a **system prompt fix** for correct outgoing invoice classification.

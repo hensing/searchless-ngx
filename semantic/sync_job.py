@@ -88,7 +88,7 @@ class SyncJob:
         Syncs a single document (content + notes) into the VectorStore.
         If `force` is False, it skips syncing if the `modified` timestamp matches existing chunks.
         """
-        logger.info(f"Starting sync for document ID: {document_id}")
+        logger.debug(f"Starting sync for document ID: {document_id}")
 
         try:
             # Refresh metadata cache if needed
@@ -99,27 +99,22 @@ class SyncJob:
             content = doc.get("content", "")
             modified_date = doc.get("modified", "")
 
-            # --- Lifecycle Skip Check ---
-            existing_metas = []
+            # --- Lifecycle Skip Check (embedding-free via collection.get) ---
+            existing_meta = None
             if not force:
-                existing = vector_store.search(
-                    query="dummy", # Query text is required but irrelevant here due to filter
-                    n_results=1,
-                    where_filter={"document_id": document_id}
-                )
-                existing_metas = existing.get("metadatas", [[]])[0]
-                if existing_metas and existing_metas[0].get("modified") == modified_date:
-                    logger.info(f"Document {document_id} is unmodified. Skipping sync.")
+                existing_meta = vector_store.get_document_metadata(document_id)
+                if existing_meta and existing_meta.get("modified") == modified_date:
+                    logger.debug(f"Document {document_id} is unmodified. Skipping sync.")
                     return
 
             # Log the reason for syncing
             title = doc.get("title", "")
             if force:
                 logger.info(f"Document {document_id} '{title}' — force re-sync.")
-            elif not existing_metas:
+            elif not existing_meta:
                 logger.info(f"Document {document_id} '{title}' is NEW — adding to vector store.")
             else:
-                old_modified = existing_metas[0].get("modified", "?")
+                old_modified = existing_meta.get("modified", "?")
                 logger.info(
                     f"Document {document_id} '{title}' was modified "
                     f"({old_modified} → {modified_date}) — updating vector store."
@@ -213,7 +208,7 @@ class SyncJob:
                 chunk_ids=chunk_ids,
                 metadatas=metadatas
             )
-            logger.info(f"Successfully synced document ID: {document_id}")
+            logger.debug(f"Successfully synced document ID: {document_id}")
 
         except Exception as e:
             logger.error(f"Failed to sync document ID {document_id}: {e}")

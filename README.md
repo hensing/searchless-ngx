@@ -32,7 +32,7 @@ If **Paperless** freed you from the burden of physical paper, **Searchless** fre
     - **Strict JSON Schema**: Zero `anyOf` or `null` types to ensure 100% compatibility with experimental MCP parsers.
     - **Interactive Cards**: Search results are presented as beautiful Markdown cards with clickable titles and metadata.
 - **Read-Only**: Zero destructive actions. It uses existing OCR text and never downloads binary PDFs.
-- **Real-Time Sync**: Webhook support for immediate ingestion of new documents.
+- **Smart Sync**: Startup sync uses a watermark to fetch only new/changed documents from Paperless in seconds. Webhook support for real-time ingestion of individual documents. Manual full-sync via `POST /sync/all`.
 - **Search Resilience**: Proactive fallback strategies ensure the LLM finds documents even when initial filters are too restrictive.
 
 ## 🏗️ Architecture
@@ -42,11 +42,10 @@ graph TD
     User([User]) -->|Chat| OWUI(Open WebUI)
     OWUI -->|MCP Streamable HTTP| MCP(FastAPI MCP Server)
     MCP -->|Gemini Embeddings| Chroma[(ChromaDB)]
-    MCP -->|Read-Only API| API(Paperless API)
+    MCP -->|"Read-Only API (metadata, content, sync)"| Paperless(Paperless-ngx)
     MCP -->|Paginated Cache| Cache[(In-Memory Metadata)]
 
-    Client[Webhook] -->|POST /webhook/sync| Webhook(FastAPI)
-    Webhook -->|Sync Job| Chroma
+    External([Paperless Workflow / External]) -->|POST /webhook/sync| MCP
 ```
 
 ## 🚀 Setup & Installation
@@ -66,9 +65,10 @@ cp .env.example .env
 | `PAPERLESS_URL` | Your Paperless-ngx base URL. |
 | `PAPERLESS_TOKEN` | API Token from Paperless settings. |
 | `GEMINI_API_KEY` | Google GenAI key for embeddings. |
-| `PUBLIC_URL` | The URL used for generating clickable links in chat. |
+| `PAPERLESS_PUBLIC_URL` | (Optional) URL used for clickable links in chat. Defaults to `PAPERLESS_URL`. |
+| `LOG_LEVEL` | (Optional) Log verbosity: `INFO` (default) or `DEBUG`. |
 | `MAX_CHUNKS_PER_DOC` | (Optional) Limit segments per document (Default: 100 ≈ 25 pages). |
-| `BULK_SYNC_LIMIT` | (Optional) Limit initial ingestion to the X newest documents. |
+| `BULK_SYNC_LIMIT` | (Optional) Cap initial ingestion to the X newest documents. |
 
 ### 3. Docker Compose
 Start the agent and Open WebUI:
@@ -115,5 +115,5 @@ uv run pytest
 ## 👤 Author
 Developed and maintained by [Dr. Henning Dickten](https://github.com/hensing) ([@hensing](https://github.com/hensing)).
 
-## � License
+## ⚖️ License
 Licensed under the GPLv3.

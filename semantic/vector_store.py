@@ -84,7 +84,7 @@ class VectorStore:
                 ids=chunk_ids,
                 metadatas=metadatas
             )
-            logger.info(f"Successfully upserted {len(chunks)} chunks for document {document_id}.")
+            logger.debug(f"Successfully upserted {len(chunks)} chunks for document {document_id}.")
         except Exception as e:
             logger.error(f"Failed to upsert chunks for document {document_id}: {e}")
             raise
@@ -95,7 +95,6 @@ class VectorStore:
         """
         self._ensure_initialized()
         try:
-            # Check if document exists first to provide better logging
             existing = self.collection.get(
                 where={"document_id": document_id},
                 limit=1
@@ -104,11 +103,82 @@ class VectorStore:
                 self.collection.delete(
                     where={"document_id": document_id}
                 )
-                logger.info(f"Existing chunks found and deleted for document {document_id}.")
+                logger.debug(f"Deleted chunks for document {document_id}.")
             else:
-                logger.debug(f"No existing chunks to delete for document {document_id}.")
+                logger.debug(f"No chunks to delete for document {document_id}.")
         except Exception as e:
             logger.error(f"Failed to delete chunks for document {document_id}: {e}")
+
+    def scan_chroma_state(self) -> Dict[str, Any]:
+        """
+        Single ChromaDB pass (no embeddings) — returns everything sync needs.
+
+        Returns:
+          chroma_ids:       set of all doc_ids currently in ChromaDB
+          latest_added_str: ISO added string of the newest doc, or None if empty
+          incomplete_ids:   set of doc_ids missing chunk_0 (interrupted sync)
+          doc_modified:     {doc_id: modified_str} for full-delta comparisons
+        """
+        self._ensure_initialized()
+        try:
+            result = self.collection.get(include=["metadatas"])
+            chunk_ids: List[str] = result.get("ids", [])
+            metas: List[Dict] = result.get("metadatas", [])
+
+            chroma_ids: set = set()
+            doc_modified: Dict[int, str] = {}
+            chunk_zero_seen: set = set()
+            best_ts: float = -1.0
+            latest_added_str: Optional[str] = None
+
+            for chunk_id, meta in zip(chunk_ids, metas):
+                doc_id = meta.get("document_id")
+                if doc_id is None:
+                    continue
+                chroma_ids.add(doc_id)
+                if doc_id not in doc_modified:
+                    doc_modified[doc_id] = meta.get("modified", "")
+                    ts = meta.get("added", 0)
+                    if isinstance(ts, (int, float)) and ts > best_ts:
+                        best_ts = ts
+                        latest_added_str = meta.get("added_str") or None
+                if chunk_id == f"doc_{doc_id}_chunk_0":
+                    chunk_zero_seen.add(doc_id)
+
+            incomplete_ids = chroma_ids - chunk_zero_seen
+
+            logger.info(
+                f"ChromaDB: {len(chroma_ids)} docs, "
+                f"latest added: {latest_added_str or 'none'}, "
+                f"{len(incomplete_ids)} incomplete."
+            )
+            return {
+                "chroma_ids": chroma_ids,
+                "latest_added_str": latest_added_str,
+                "incomplete_ids": incomplete_ids,
+                "doc_modified": doc_modified,
+            }
+        except Exception as e:
+            logger.error(f"scan_chroma_state failed: {e}")
+            return {"chroma_ids": set(), "latest_added_str": None, "incomplete_ids": set(), "doc_modified": {}}
+
+    def get_document_metadata(self, document_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Return stored metadata for the first chunk of a document, or None if not found.
+        Uses collection.get() — no embeddings required, safe during Gemini outages.
+        """
+        self._ensure_initialized()
+        try:
+            result = self.collection.get(
+                where={"document_id": document_id},
+                limit=1,
+                include=["metadatas"]
+            )
+            metas = result.get("metadatas", [])
+            return metas[0] if metas else None
+        except Exception as e:
+            logger.error(f"get_document_metadata failed for document {document_id}: {e}")
+            return None
 
     def search(
         self,

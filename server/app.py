@@ -1,21 +1,28 @@
 import asyncio
-from fastapi import FastAPI, BackgroundTasks, Request, Response, status
+from importlib.metadata import version, PackageNotFoundError
+from fastapi import FastAPI, BackgroundTasks, Query, Request, Response, status
 from loguru import logger
 from core.config import settings
 from api.paperless_client import PaperlessAPIClient
-from semantic.sync_job import SyncJob
+from semantic.sync_job import SyncJob  # used by process_sync (webhook handler)
+from semantic.bulk_sync import bulk_sync_documents
 from server.mcp_tools import mcp
 import core.logger  # Ensure logger is set up
 
 from contextlib import asynccontextmanager
 from semantic.metadata_cache import metadata_cache
 
+try:
+    __version__ = version("paperless-mcp-server")
+except PackageNotFoundError:
+    __version__ = "dev"
+
 # Extract the MCP ASGI app into a variable so we can access its lifespan
 mcp_asgi_app = mcp.streamable_http_app()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Keep our existing Paperless cache logic
+    # Refresh metadata cache on startup
     client = PaperlessAPIClient()
     try:
         await metadata_cache.refresh_if_needed(client)
@@ -23,15 +30,21 @@ async def lifespan(app: FastAPI):
         await client.close()
 
     # Forward the lifespan to the mounted MCP app
-    # This manually triggers FastMCP's startup events and initializes the task groups.
     async with mcp_asgi_app.router.lifespan_context(app):
+        logger.info("━" * 60)
+        logger.info(f"  Searchless-ngx  ·  Search less, find more.  (v{__version__})")
+        logger.info("  Agentic RAG + MCP server for Paperless-ngx")
+        logger.info("  github.com/hensing/paperless-mcp-agent")
+        logger.info("━" * 60)
+        asyncio.create_task(bulk_sync_documents(force=False))
+        logger.info("Startup sync scheduled — watching for new and changed documents.")
         yield
 
 # Initialize FastAPI App
 app = FastAPI(
     title="paperless-mcp-server",
     description="Searchless-ngx: Agentic RAG and MCP server for Paperless-ngx",
-    version="0.1.5",
+    version=__version__,
     lifespan=lifespan
 )
 
@@ -63,6 +76,43 @@ async def process_sync(payload: dict):
         logger.error(f"Error in background sync for document {document_id}: {e}")
     finally:
         await client.close()
+
+
+@app.post("/sync/all", status_code=status.HTTP_202_ACCEPTED)
+async def sync_all(
+    background_tasks: BackgroundTasks,
+    force: bool = Query(default=False, description="Re-sync even unmodified documents"),
+):
+    """
+    Trigger a full sync of all Paperless-ngx documents into ChromaDB.
+    Runs in the background; returns immediately. Respects BULK_SYNC_LIMIT env var.
+    Use ?force=true to re-embed already-synced documents.
+    """
+    background_tasks.add_task(bulk_sync_documents, force)
+    limit_note = f", capped at BULK_SYNC_LIMIT={settings.bulk_sync_limit}" if settings.bulk_sync_limit else ""
+    return {"message": f"Full sync started{limit_note}. Watch server logs for progress."}
+
+
+@app.get("/sync/status")
+async def sync_status():
+    """Returns the number of documents in Paperless vs. chunks in ChromaDB."""
+    from semantic.vector_store import vector_store
+    vector_store._ensure_initialized()
+    chroma_chunks = vector_store.collection.count() if vector_store.collection else 0
+
+    client = PaperlessAPIClient()
+    try:
+        response = await client.get_documents(params={"page_size": 1})
+        paperless_docs = response.get("count", 0)
+    finally:
+        await client.close()
+
+    return {
+        "paperless_documents": paperless_docs,
+        "chroma_chunks": chroma_chunks,
+        "bulk_sync_limit": settings.bulk_sync_limit,
+    }
+
 
 @app.post("/webhook/sync", status_code=status.HTTP_202_ACCEPTED)
 async def webhook_sync(request: Request, background_tasks: BackgroundTasks):
