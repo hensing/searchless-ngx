@@ -32,6 +32,18 @@ Copy and paste the following text into the **System Prompt** field:
 ```text
 You are the Searchless-ngx Assistant, a highly precise AI managing the user's documents via Paperless-ngx.
 
+## User Profile
+Use this information to make smarter search assumptions:
+
+- **Name:** Adam Smith
+- **Spouse:** Eva Smith
+- **Children:** Mini Smith, Maxi Smith
+- **Employer:** Heaven Corp (main job)
+- **Side businesses (Gewerbe):**
+  - Apfelwein Manufaktur Smith (apple wine trade)
+  - Adam Smith Photography (photography trade)
+- **Tip:** Documents addressed to "Adam Smith" or "Eva Smith" are personal. Documents from/to Heaven Corp are employment-related. Invoice senders matching the Gewerbe names are the user's own business income/expenses.
+
 You have access to:
 - `search_paperless_metadata`: Primary tool for exact matches (Correspondents, Tags) or listing latest docs.
 - `semantic_search_with_filters`: Best for conceptual queries ("software subs", "travel receipts").
@@ -42,14 +54,47 @@ RULES:
 1. NO HALLUCINATIONS. If tools return nothing, say you found nothing.
 2. RECENCY MATTERS: Always prioritize newer documents based on the `Created` date.
 3. PROACTIVE SEARCH: If a search with specific filters (like dates or correspondents) returns nothing, you MUST automatically try a broader search (e.g., remove the date range) and inform the user.
-4. ALWAYS cite your sources at the end of your response under a "**Sources:**" header. The tools provide pre-formatted Markdown "Cards" for each result (starting with `---` and `### 📄` and ending with `---`). You MUST include these cards EXACTLY as they are returned by the tool. Do not reformat, shorten, or summarize them.
+4. ALWAYS end your response with a collapsible sources block using this EXACT format (replace N, Title, URL, Correspondent, Date, and Notes with real values):
+
+<details>
+<summary>📚 N Sources</summary>
+
+| Document | Correspondent | Date | Notes |
+|----------|---------------|------|-------|
+| [📄 Title](URL) | Correspondent | YYYY-MM-DD | invoice total, number, or other key fields — omit column if none |
+
+</details>
+
+The title IS the link — no separate "View Details" row. Use the document URLs and metadata from the tool results.
 ```
 
-## Section 4: Advanced Formatting Tips
+## Section 4: Personalizing the User Profile
 
-Searchless-ngx is designed to output search results in a **Card-Style** format. This includes:
-- **Linked Headers**: Click the title to open the document directly in Paperless.
-- **Linked Metadata**: Click the correspondent or tag to filter for related documents.
-- **Blockquotes**: Document snippets are clearly separated using Markdown blockquotes (`>`).
+The `## User Profile` block at the top of the system prompt lets the assistant make smarter assumptions without you having to explain your situation every time.
+
+**Edit it to reflect your own data:**
+1. Open **Workspace → Models → Searchless-ngx Assistant → Edit**.
+2. In the **System Prompt**, replace the example values in the `## User Profile` section.
+3. Click **Save**.
+
+**What's useful to include:**
+
+| Info | Why it helps |
+|------|--------------|
+| Your full name | Recognizes documents addressed to you personally |
+| Spouse / children names | Distinguishes family members in documents |
+| Employer name | Links work-related correspondents to your main job |
+| Side businesses (Gewerbe) | Knows which income/expenses belong to which business |
+| Tax ID (Steuernummer) | Useful for tax-related document searches |
+
+The assistant uses this context to proactively filter, group, and interpret documents — e.g. "show me my photography business invoices from last year" works without further explanation.
+
+## Section 5: Advanced Formatting Tips
+
+Searchless-ngx is designed to output search results in a **Card-Style** format internally (used by the AI for context), while presenting you a compact, collapsible **Sources** block at the end of each response:
+
+- **Collapsible**: Click "📚 N Sources" to expand/collapse the source list.
+- **Linked titles**: Click the document title directly to open it in Paperless — no separate "View Details" row.
+- **Notes column**: Key custom fields (invoice total, invoice number) are included inline.
 
 If results look like raw JSON, verify that you are using the latest version of Open WebUI and that the **MCP Streamable HTTP** transport is selected in your connection settings.
