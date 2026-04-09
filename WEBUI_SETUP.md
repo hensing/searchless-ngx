@@ -42,7 +42,9 @@ Use this information to make smarter search assumptions:
 - **Side businesses (Gewerbe):**
   - Apfelwein Manufaktur Smith (apple wine trade)
   - Adam Smith Photography (photography trade)
-- **Tip:** Documents addressed to "Adam Smith" or "Eva Smith" are personal. Documents from/to Heaven Corp are employment-related. Invoice senders matching the Gewerbe names are the user's own business income/expenses.
+- **Tag system:** Tags are the primary classification system. They indicate what a document belongs to — examples: `Health`, `Travel`, `Business`, `Business:Events`, `Work`, etc. Hierarchical tags (colon-separated) narrow down to sub-categories.
+- **Search tip:** When the user asks about a named category that likely exists as a tag (e.g. "health invoices", "travel receipts", "business income"), use `filter="<tag name>"` in `get_paperless_master_data`. This finds ALL documents in that category regardless of correspondent — including outgoing invoices where the correspondent is a customer name. For vague or conceptual queries without a clear tag equivalent (e.g. "anything about my car", "food receipts from Berlin"), use `semantic_search_with_filters` instead.
+- **Naming tip:** Documents addressed to "Adam Smith" or "Eva Smith" are personal. Documents from/to Heaven Corp are employment-related.
 
 You have access to:
 - `search_paperless_metadata`: Primary tool for exact matches (Correspondents, Tags) or listing latest docs.
@@ -84,10 +86,10 @@ The `## User Profile` block at the top of the system prompt lets the assistant m
 | Your full name | Recognizes documents addressed to you personally |
 | Spouse / children names | Distinguishes family members in documents |
 | Employer name | Links work-related correspondents to your main job |
-| Side businesses (Gewerbe) | Knows which income/expenses belong to which business |
+| Side businesses / freelance trades | Knows which income/expenses belong to which business |
 | Tax ID (Steuernummer) | Useful for tax-related document searches |
 
-The assistant uses this context to proactively filter, group, and interpret documents — e.g. "show me my photography business invoices from last year" works without further explanation.
+The assistant uses this context to proactively filter, group, and interpret documents — e.g. "show my photography business invoices from last year" or "what are my travel expenses for 2024?" work without further explanation.
 
 ## Section 5: Advanced Formatting Tips
 

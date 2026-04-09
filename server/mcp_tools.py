@@ -558,6 +558,18 @@ async def get_paperless_master_data(
     - "What are my latest insurance documents?"
       → get_paperless_master_data(filter="insurance")
 
+    TAGS AND DOCUMENT TYPES PROVIDE STRUCTURE:
+    - Tags are the primary classification system. They indicate what a document belongs to
+      (e.g. "Health", "Travel", "Business", "Business:Events"). Hierarchical tags (colon-separated)
+      narrow to sub-categories. When the user asks about a named category that likely exists as a
+      tag (e.g. "health invoices", "business income"), prefer filter="<tag name>" over a
+      correspondent name — this catches ALL documents in that category regardless of who the
+      correspondent is (e.g. outgoing invoices where the correspondent is a customer name).
+      For vague or conceptual queries without a clear tag equivalent (e.g. "food receipts from
+      Berlin", "anything about my car"), use semantic_search_with_filters instead.
+    - Document types (e.g. "Invoice", "Contract", "Statement") further classify document purpose.
+      Use them together with tags or correspondents to narrow results.
+
     WHEN TO USE:
     - For ANY question about documents from a named entity or category.
     - With time_range for date-scoped queries — no separate get_current_date needed.

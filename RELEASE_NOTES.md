@@ -1,3 +1,48 @@
+# Release Notes - v0.2.0 🗂️
+
+This release introduces **Open WebUI UX improvements** and **smarter tag-aware search guidance**, making the assistant more context-aware and the source citations more compact.
+
+## What's new in v0.2.0
+
+### 🗂️ Tag- and Document-Type-Aware Search (mcp_tools.py)
+
+`get_paperless_master_data` now explicitly guides the LLM on when to use tags vs. semantic search:
+
+- **Named categories → tag filter**: when the user asks about a recognizable category (e.g. "health invoices", "business income"), the tool instructs the LLM to use `filter="<tag name>"`. This catches all matching documents regardless of correspondent — including outgoing invoices where the correspondent is the customer, not the user's own business name.
+- **Vague/conceptual queries → semantic search**: for fuzzy queries without a clear tag equivalent (e.g. "food receipts from Berlin", "anything about my car"), `semantic_search_with_filters` is the correct path. The guidance explicitly avoids over-applying the tag-filter heuristic.
+- **Document types**: the docstring now also mentions document types (Invoice, Contract, Statement) as a complementary classification axis.
+
+### 🪗 Collapsible Sources Block (WEBUI_SETUP.md)
+
+The system prompt now instructs the LLM to end every response with a compact, collapsible HTML/Markdown sources block instead of copying the full raw cards:
+
+```html
+<details>
+<summary>📚 N Sources</summary>
+
+| Document | Correspondent | Date | Notes |
+|----------|---------------|------|-------|
+| [📄 Title](URL) | Correspondent | YYYY-MM-DD | invoice total, key custom fields |
+
+</details>
+```
+
+- Document title is the direct link — no separate "View Details" row.
+- Notes column includes key custom fields (invoice total, number) inline.
+- Collapses by default, keeping the chat clean.
+
+### 👤 User Profile in System Prompt (WEBUI_SETUP.md)
+
+A new `## User Profile` block can be filled in by the user to give the assistant persistent personal context:
+
+- **Personal details**: name, spouse, children — so the assistant recognizes whose documents are whose.
+- **Employer and side businesses**: lets the assistant correctly classify employment vs. business income/expenses.
+- **Tag system hint**: explains that tags are the primary classification system (hierarchical, colon-separated) and how to pick between tag-filter and semantic search.
+
+Section 4 of the setup guide documents what information is useful to include and why.
+
+---
+
 # Release Notes - v0.1.7 🧪
 
 This release focuses on **Test Coverage & Observability**, expanding the test suite from 18 to 55 tests and improving sync logging for better operational visibility.
