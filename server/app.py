@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta
 from importlib.metadata import version, PackageNotFoundError
 from fastapi import FastAPI, BackgroundTasks, Query, Request, Response, status
 from loguru import logger
@@ -16,6 +17,19 @@ try:
     __version__ = version("paperless-mcp-server")
 except PackageNotFoundError:
     __version__ = "dev"
+
+async def _periodic_sync_loop(interval_minutes: int):
+    """Runs bulk_sync_documents() every interval_minutes minutes."""
+    while True:
+        await asyncio.sleep(interval_minutes * 60)
+        next_run = datetime.now() + timedelta(minutes=interval_minutes)
+        logger.info(f"Periodic sync starting (interval: {interval_minutes} min) ...")
+        await bulk_sync_documents(force=False)
+        logger.info(
+            f"Periodic sync done. Next run at {next_run.strftime('%H:%M')} "
+            f"(in {interval_minutes} min)."
+        )
+
 
 # Extract the MCP ASGI app into a variable so we can access its lifespan
 mcp_asgi_app = mcp.streamable_http_app()
@@ -38,6 +52,13 @@ async def lifespan(app: FastAPI):
         logger.info("━" * 60)
         asyncio.create_task(bulk_sync_documents(force=False))
         logger.info("Startup sync scheduled — watching for new and changed documents.")
+        if settings.sync_interval_minutes > 0:
+            asyncio.create_task(_periodic_sync_loop(settings.sync_interval_minutes))
+            next_run = datetime.now() + timedelta(minutes=settings.sync_interval_minutes)
+            logger.info(
+                f"Periodic sync enabled — every {settings.sync_interval_minutes} min. "
+                f"Next run at {next_run.strftime('%H:%M')}."
+            )
         yield
 
 # Initialize FastAPI App

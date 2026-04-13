@@ -1,3 +1,42 @@
+# Release Notes - v0.4.0 ⏰
+
+This release introduces a **periodic background sync** that keeps the semantic index continuously up to date without relying on webhooks or manual triggers.
+
+## What's new in v0.4.0
+
+### ⏰ Periodic Background Sync (`server/app.py`, `core/config.py`)
+
+After the one-time startup sync, the server now starts a lightweight asyncio loop that calls `bulk_sync_documents()` on a configurable interval (default: **15 minutes**). This ensures the ChromaDB index stays fresh even without Paperless webhooks configured.
+
+On startup the log shows:
+```
+Startup sync scheduled — watching for new and changed documents.
+Periodic sync enabled — every 15 min. Next run at 14:37.
+```
+
+After each periodic run:
+```
+Periodic sync starting (interval: 15 min) ...
+Periodic sync done. Next run at 14:52 (in 15 min).
+```
+
+The sync is incremental (watermark-based) — it only fetches documents that were added or modified since the last run, so it is very cheap for most runs.
+
+**New env var:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNC_INTERVAL_MINUTES` | `15` | Interval between periodic syncs in minutes. Set to `0` to disable and rely on startup sync + webhooks only. |
+
+### 🧪 Tests (`tests/test_periodic_sync.py`)
+
+New test module covering:
+- Loop calls `bulk_sync_documents` after each sleep interval
+- Log output contains "Next run at HH:MM"
+- `SYNC_INTERVAL_MINUTES` defaults to 15, is configurable, and can be set to 0 to disable
+
+---
+
 # Release Notes - v0.3.1 🔧
 
 This release adds a **bulk sync endpoint**, **smart startup sync**, and **cleaner logging**.

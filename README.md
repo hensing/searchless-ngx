@@ -32,7 +32,7 @@ If **Paperless** freed you from the burden of physical paper, **Searchless** fre
     - **Strict JSON Schema**: Zero `anyOf` or `null` types to ensure 100% compatibility with experimental MCP parsers.
     - **Interactive Cards**: Search results are presented as beautiful Markdown cards with clickable titles and metadata.
 - **Read-Only**: Zero destructive actions. It uses existing OCR text and never downloads binary PDFs.
-- **Smart Sync**: Startup sync uses a watermark to fetch only new/changed documents from Paperless in seconds. Webhook support for real-time ingestion of individual documents. Manual full-sync via `POST /sync/all`.
+- **Smart Sync**: Startup sync uses a watermark to fetch only new/changed documents from Paperless in seconds. Periodic background sync (default: every 15 min, configurable) keeps the index continuously up to date. Webhook support for real-time ingestion of individual documents. Manual full-sync via `POST /sync/all`.
 - **Search Resilience**: Proactive fallback strategies ensure the LLM finds documents even when initial filters are too restrictive.
 
 ## 🏗️ Architecture
@@ -46,6 +46,7 @@ graph TD
     MCP -->|Paginated Cache| Cache[(In-Memory Metadata)]
 
     External([Paperless Workflow / External]) -->|POST /webhook/sync| MCP
+    Timer([Periodic Sync\nevery 15 min]) -->|bulk_sync_documents| MCP
 ```
 
 ## 🚀 Setup & Installation
@@ -69,6 +70,7 @@ cp .env.example .env
 | `LOG_LEVEL` | (Optional) Log verbosity: `INFO` (default) or `DEBUG`. |
 | `MAX_CHUNKS_PER_DOC` | (Optional) Limit segments per document (Default: 100 ≈ 25 pages). |
 | `BULK_SYNC_LIMIT` | (Optional) Cap initial ingestion to the X newest documents. |
+| `SYNC_INTERVAL_MINUTES` | (Optional) Periodic background sync interval in minutes (Default: 15). Set to `0` to disable. |
 
 ### 3. Docker Compose
 Start the agent and Open WebUI:

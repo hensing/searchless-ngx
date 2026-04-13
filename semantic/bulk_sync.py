@@ -109,6 +109,7 @@ async def bulk_sync_documents(force: bool = False):
                 )
             ]
             to_delete = chroma_ids - paperless_id_set
+            missing_ids: set = set()  # full mode covers all missing docs via modified-diff
 
         else:
             # Incremental: only fetch docs added or modified since watermark
@@ -117,25 +118,41 @@ async def bulk_sync_documents(force: bool = False):
 
             # Two cheap filtered Paperless queries in parallel (no Gemini)
             new_docs, modified_docs = await asyncio.gather(
-                _fetch_pages(client, {"added__date__gt": since, "ordering": "added"}),
-                _fetch_pages(client, {"modified__date__gt": since, "ordering": "modified"}),
+                _fetch_pages(client, {"added__date__gte": since, "ordering": "added"}),
+                _fetch_pages(client, {"modified__date__gte": since, "ordering": "modified"}),
             )
-            # Union by ID
+            # Union by ID, then skip docs already in ChromaDB with same modified timestamp
             to_sync_map = {doc["id"]: doc for doc in new_docs + modified_docs if "id" in doc}
-            to_sync = list(to_sync_map.values())
+            to_sync = [
+                doc for doc in to_sync_map.values()
+                if (doc_id := doc.get("id")) is not None
+                and (
+                    doc_id not in doc_modified
+                    or doc_modified[doc_id] != doc.get("modified", "")
+                )
+            ]
 
             # ID diff for deleted docs (lightweight: only extracts IDs)
             all_paperless_ids = await _fetch_all_paperless_ids(client)
             to_delete = chroma_ids - all_paperless_ids
 
+            # Docs in Paperless but missing from ChromaDB (not caught by date filter)
+            missing_ids = all_paperless_ids - chroma_ids
+
         # Incomplete docs not already in to_sync and not being deleted
         to_sync_ids = {doc["id"] for doc in to_sync}
         force_ids = incomplete_ids - to_sync_ids - to_delete
+        missing_ids -= to_sync_ids  # already scheduled via date filter
+        missing_ids -= to_delete    # being deleted, not missing
+
+        if missing_ids:
+            logger.info(f"Found {len(missing_ids)} docs in Paperless missing from ChromaDB — scheduling re-sync.")
 
         logger.info(
             f"Delta: {len(to_sync)} to sync, "
             f"{len(to_delete)} to delete, "
-            f"{len(force_ids)} incomplete (force re-sync)."
+            f"{len(force_ids)} incomplete (force re-sync), "
+            f"{len(missing_ids)} missing from ChromaDB."
         )
 
         # ── Step 3: Delete orphans ─────────────────────────────────────────────
@@ -145,7 +162,7 @@ async def bulk_sync_documents(force: bool = False):
                 await job.delete_document(doc_id)
 
         # ── Step 4: Sync (Gemini embeddings only here) ────────────────────────
-        total = len(to_sync) + len(force_ids)
+        total = len(to_sync) + len(force_ids) + len(missing_ids)
         if total == 0:
             logger.info("All documents are up to date.")
             return
@@ -167,6 +184,7 @@ async def bulk_sync_documents(force: bool = False):
 
         tasks = [sync_safe(doc["id"]) for doc in to_sync]
         tasks += [sync_safe(doc_id, force_embed=True) for doc_id in force_ids]
+        tasks += [sync_safe(doc_id) for doc_id in missing_ids]
         await asyncio.gather(*tasks)
 
         logger.info(

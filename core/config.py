@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     paperless_public_url: Optional[str] = None
     # Maximum chunks per document (100 chunks ≈ 25 DIN-A4 pages)
     max_chunks_per_doc: int = 100
+    # Periodic background sync interval in minutes (0 = disabled)
+    sync_interval_minutes: int = 15
 
     @property
     def public_url(self) -> str:
