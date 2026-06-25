@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 from semantic.sync_job import SyncJob
 from api.paperless_client import PaperlessAPIClient
 
@@ -136,3 +137,34 @@ def test_vector_store_delete_document(mock_vector_store):
     # Verify it's gone
     results2 = mock_vector_store.search("Delete me", where_filter={"document_id": 100})
     assert len(results2["documents"][0]) == 0
+
+
+def test_signature_mismatch_raises():
+    """A collection built with a different provider/model must fail loudly."""
+    from semantic.vector_store import VectorStore
+    store = VectorStore()
+    store.collection = MagicMock()
+    store.collection.metadata = {
+        "embedding_provider": "google",
+        "embedding_model": "models/gemini-embedding-001",
+    }
+    with pytest.raises(RuntimeError, match="mismatch"):
+        store._verify_embedding_signature({
+            "embedding_provider": "mistral",
+            "embedding_model": "mistral-embed",
+            "embedding_dim": 1024,
+        })
+
+
+def test_signature_legacy_collection_does_not_raise():
+    """A pre-signature (legacy) collection only warns, never raises."""
+    from semantic.vector_store import VectorStore
+    store = VectorStore()
+    store.collection = MagicMock()
+    store.collection.metadata = {"description": "old"}
+    # Should not raise.
+    store._verify_embedding_signature({
+        "embedding_provider": "mistral",
+        "embedding_model": "mistral-embed",
+        "embedding_dim": 1024,
+    })

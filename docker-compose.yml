@@ -43,8 +43,11 @@ services:
     volumes:
       - open-webui:/app/backend/data
     environment:
-      # Google Gemini API Key for the UI
-      - GOOGLE_API_KEY=${GEMINI_API_KEY}
+      # Default: Mistral via the OpenAI-compatible endpoint.
+      - OPENAI_API_BASE_URL=https://api.mistral.ai/v1
+      - OPENAI_API_KEY=${MISTRAL_API_KEY}
+      # Alternative: Google Gemini for the UI (uncomment and comment the Mistral lines above).
+      # - GOOGLE_API_KEY=${GEMINI_API_KEY}
       # Optional: Local Ollama Configuration
       # To use a local Ollama instance, uncomment the line below.
       # On macOS/Windows with Docker Desktop, use 'host.docker.internal'.

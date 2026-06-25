@@ -25,7 +25,7 @@ def mock_vector_store():
     Replaces the HTTP client in vector_store module.
     """
     with patch("semantic.vector_store.chromadb.HttpClient", return_value=chromadb.EphemeralClient()):
-        with patch("semantic.vector_store.GeminiEmbeddingFunction", return_value=DefaultEmbeddingFunction()):
+        with patch("semantic.vector_store.providers.get_embedding_function", return_value=DefaultEmbeddingFunction()):
             from semantic.vector_store import VectorStore
             # Re-initialize to pick up mocks
             store = VectorStore()

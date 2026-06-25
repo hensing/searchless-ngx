@@ -1,3 +1,37 @@
+# Release Notes - v0.5.0 🔀
+
+This release makes **Mistral the default LLM/embedding provider** and adds support for **Google Gemini**, **OpenAI**, and **self-hosted models via Ollama** — selectable per axis (embeddings vs. chat) through the `LLM_PROVIDER` / `EMBEDDING_PROVIDER` / `CHAT_PROVIDER` switches.
+
+## What's new in v0.5.0
+
+### 🔀 Pluggable provider (`core/providers.py`, `core/config.py`)
+
+A new provider seam selects the embedding model, the internal fuzzy-match LLM, and (via the OpenAI-compatible endpoint) the Open-WebUI chat:
+
+- Providers: `mistral` (**new default**), `google`, `openai`, and `ollama` (local models). `openai`/`ollama` share one OpenAI-compatible client, so any OpenAI-compatible endpoint (vLLM/TEI/LM Studio) works too.
+- **Best-of-breed:** `EMBEDDING_PROVIDER` and `CHAT_PROVIDER` split the two axes independently (each falls back to `LLM_PROVIDER`). E.g. Google embeddings (stronger multilingual retrieval) + Mistral (EU) chat.
+- **Fully local:** run Qwen3 embeddings + Mistral Small 24B on Ollama — nothing leaves the machine (see README).
+- API keys are required only for the cloud provider(s) actually in use (`ollama` needs none).
+- Optional `EMBEDDING_MODEL` / `CHAT_MODEL` overrides per axis.
+
+The vector collection now stamps its embedding **provider/model signature** into ChromaDB metadata and verifies it on startup. A provider/model mismatch fails loudly with a clear remediation instead of an opaque dimension error.
+
+**New env vars:** `LLM_PROVIDER`, `EMBEDDING_PROVIDER`, `CHAT_PROVIDER`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OLLAMA_BASE_URL` (plus optional `EMBEDDING_MODEL`, `CHAT_MODEL`). `GEMINI_API_KEY` is now optional (required only when the Google provider is in use). `ollama` needs no key.
+
+### ⚠️ Migration: rebuild the vector DB when switching providers
+
+Embeddings from different models are not comparable (and differ in dimension: Mistral 1024 vs Gemini 3072). To switch the embedding provider, wipe the `chroma_data` volume and let the startup sync re-embed:
+
+```bash
+docker compose down
+docker volume rm $(docker compose config --volumes | grep chroma)
+docker compose up -d
+```
+
+Staying on Google (`LLM_PROVIDER=google` + `GEMINI_API_KEY`) requires no rebuild.
+
+---
+
 # Release Notes - v0.4.0 ⏰
 
 This release introduces a **periodic background sync** that keeps the semantic index continuously up to date without relying on webhooks or manual triggers.

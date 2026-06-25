@@ -1,32 +1,12 @@
 import chromadb
-from google import genai
 from chromadb.api.models.Collection import Collection
-from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from core.config import settings
+from core import providers
+# Re-exported for backward compatibility (tests import it from here).
+from core.providers import GeminiEmbeddingFunction
 from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import List, Dict, Any, Optional
-
-class GeminiEmbeddingFunction(EmbeddingFunction):
-    def __init__(self, api_key: str, model_name: str):
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
-
-    def __call__(self, input: Documents) -> Embeddings:
-        # Google GenAI BatchEmbedContentsRequest has a limit of 100 requests per batch.
-        # We need to manually batch if the input exceeds this limit.
-        max_batch_size = 100
-        all_embeddings = []
-
-        for i in range(0, len(input), max_batch_size):
-            batch = input[i : i + max_batch_size]
-            result = self.client.models.embed_content(
-                model=self.model_name,
-                contents=batch
-            )
-            # Extract embeddings and add to our collection
-            all_embeddings.extend([e.values for e in result.embeddings])
-
-        return all_embeddings
 
 class VectorStore:
     def __init__(self):
@@ -42,21 +22,45 @@ class VectorStore:
         # Initialize the ChromaDB client pointing to the remote/Docker service
         self.client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
 
-        # Configure Google GenAI embedding function using the new SDK
-        self.embedding_function = GeminiEmbeddingFunction(
-            api_key=settings.gemini_api_key,
-            model_name="models/gemini-embedding-001"
-        )
+        # Embedding function for the configured provider (mistral default, google fallback).
+        self.embedding_function = providers.get_embedding_function()
+        signature = providers.embedding_signature()
 
-        # Get or create the main document collection
+        # Get or create the main document collection. The signature is stamped on
+        # creation; on an existing collection ChromaDB returns the stored metadata.
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
             embedding_function=self.embedding_function,
-            metadata={"description": "Paperless-ngx parsed documents and notes"}
+            metadata={"description": "Paperless-ngx parsed documents and notes", **signature}
         )
+        self._verify_embedding_signature(signature)
         logger.info(f"Initialized VectorStore. Collection: {self.collection_name} loaded.")
 
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    def _verify_embedding_signature(self, current: Dict[str, Any]):
+        """Refuse to operate on a collection built with a different embedding provider/model.
+
+        Switching providers changes the vector space (and usually the dimension), so the
+        existing vectors are unusable. We fail loudly with a clear remediation instead of
+        letting ChromaDB throw an opaque dimension-mismatch error on the first upsert.
+        """
+        stored = self.collection.metadata or {}
+        stored_provider = stored.get("embedding_provider")
+        stored_model = stored.get("embedding_model")
+        if stored_provider is None and stored_model is None:
+            # Legacy collection created before signatures existed — can't verify.
+            logger.warning(
+                "Vector collection predates embedding-provider stamping. If you have "
+                "switched providers, wipe the 'chroma_data' volume and run a full re-sync."
+            )
+            return
+        if (stored_provider, stored_model) != (current["embedding_provider"], current["embedding_model"]):
+            raise RuntimeError(
+                f"Embedding provider/model mismatch: collection holds "
+                f"'{stored_provider}/{stored_model}' but configured provider is "
+                f"'{current['embedding_provider']}/{current['embedding_model']}'. "
+                f"Embeddings from different models are not comparable. Wipe the "
+                f"'chroma_data' volume and run a full re-sync (POST /sync/all?force=true)."
+            )
 
     @retry(
         stop=stop_after_attempt(7),

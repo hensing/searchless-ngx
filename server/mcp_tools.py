@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import Field
 from mcp.server.fastmcp import FastMCP, Context
-from google import genai
+from core import providers
 from api.paperless_client import PaperlessAPIClient
 from semantic.vector_store import vector_store
 from semantic.metadata_cache import metadata_cache
@@ -45,7 +45,7 @@ def _get_today_str() -> str:
 
 async def _llm_fuzzy_match(filter_term: str, candidates: List[str]) -> List[str]:
     """
-    Use Gemini Flash to fuzzy-match a filter term against a list of candidate names.
+    Use the configured chat LLM to fuzzy-match a filter term against a list of candidate names.
     Handles typos, abbreviations, and semantic similarity (e.g. 'DB' → 'Deutsche Bahn').
     Returns the subset of candidates that match. Falls back to empty list on error.
     """
@@ -63,16 +63,8 @@ async def _llm_fuzzy_match(filter_term: str, candidates: List[str]) -> List[str]
         f"List:\n{names_block}"
     )
 
-    def _call() -> str:
-        llm = genai.Client(api_key=settings.gemini_api_key)
-        resp = llm.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt
-        )
-        return resp.text.strip()
-
     try:
-        result = await asyncio.to_thread(_call)
+        result = await asyncio.to_thread(providers.chat_complete, prompt)
         if not result or result.upper() == "NONE":
             return []
         matched = [
